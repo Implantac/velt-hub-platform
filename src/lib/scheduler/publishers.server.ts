@@ -187,10 +187,12 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
           .replaceAll(encodeURIComponent(secret), "[redacted]");
       }
     }
-    const candidate = err as { retryable?: boolean; externalPostId?: string };
+    const candidate = err as PublisherError;
     throw new PublisherError(message, {
       retryable: candidate?.retryable ?? false,
       externalPostId: candidate?.externalPostId,
+      reference: candidate?.reference,
+      definiteRejection: candidate?.definiteRejection,
     });
   }
 }

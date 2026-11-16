@@ -6,11 +6,12 @@
 import { composeCaption, detectMediaKind, isFetchableUrl } from "../media";
 import { downloadPublicMedia } from "../media-download.server";
 import { PublisherError, type PublishInput, type PublishResult } from "../contracts";
+import { beforeProviderWrite, preservePublicationReference } from "../references";
+import { parseProviderJson } from "../provider-json.server";
+import { confirmPublication } from "./confirmation.server";
 
 const TIKTOK_API = "https://open.tiktokapis.com/v2";
 const MAX_BYTES = 64 * 1024 * 1024; // Single-chunk upload; do not silently exceed the API chunk limit.
-const STATUS_ATTEMPTS = 12;
-const STATUS_INTERVAL_MS = 5_000;
 
 type TikTokResponse = {
   data?: {
@@ -27,17 +28,8 @@ type TikTokResponse = {
   error?: { code?: string };
 };
 
-/** Node 22 supplies the original numeric lexeme to the reviver. Never round an int64 ID. */
 function parseResponse(text: string): TikTokResponse {
-  return JSON.parse(text, (_key, value: unknown, context?: { source: string }) => {
-    if (typeof value === "number" && Number.isInteger(value) && !Number.isSafeInteger(value)) {
-      if (context && /^\d+$/.test(context.source)) return context.source;
-      throw new PublisherError("TikTok retornou um identificador sem precisão numérica segura.", {
-        retryable: false,
-      });
-    }
-    return value;
-  }) as TikTokResponse;
+  return parseProviderJson(text) as TikTokResponse;
 }
 
 async function api(
@@ -47,6 +39,7 @@ async function api(
 ): Promise<TikTokResponse> {
   const res = await fetch(`${TIKTOK_API}/${path}`, {
     method: "POST",
+    redirect: "error",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json; charset=UTF-8",
@@ -70,6 +63,7 @@ async function api(
       `TikTok recusou a operação (${res.status}). Confira a autorização do aplicativo.`,
       {
         retryable: res.status === 429,
+        definiteRejection: [400, 401, 403, 429].includes(res.status),
       },
     );
   }
@@ -116,6 +110,7 @@ export async function publishTikTok(input: PublishInput): Promise<PublishResult>
     });
   }
 
+  await beforeProviderWrite(input);
   const initialized = await api("post/publish/video/init/", token, {
     post_info: {
       title: composeCaption(input.payload.title, input.payload.body),
@@ -133,10 +128,12 @@ export async function publishTikTok(input: PublishInput): Promise<PublishResult>
   });
   const reference = initialized.data?.publish_id;
   const uploadUrl = initialized.data?.upload_url;
+  const checkpoint = reference ? { kind: "tiktok_publish" as const, id: reference } : undefined;
+  if (checkpoint) await preservePublicationReference(input, checkpoint);
   if (!reference || !uploadUrl) {
     throw new PublisherError(
       "TikTok não retornou publish_id/upload_url. Verifique antes de repetir.",
-      { retryable: false, externalPostId: reference },
+      { retryable: false, reference: checkpoint },
     );
   }
 
@@ -151,6 +148,7 @@ export async function publishTikTok(input: PublishInput): Promise<PublishResult>
     ) {
       throw new Error("Unexpected upload host");
     }
+    await beforeProviderWrite(input);
     const uploaded = await fetch(target, {
       method: "PUT",
       headers: {
@@ -163,37 +161,14 @@ export async function publishTikTok(input: PublishInput): Promise<PublishResult>
     });
     if (!uploaded.ok) throw new Error("Upload has no confirmed acknowledgement");
 
-    for (let attempt = 0; attempt < STATUS_ATTEMPTS; attempt++) {
-      const status = await api("post/publish/status/fetch/", token, { publish_id: reference });
-      if (status.data?.status === "FAILED" || status.data?.status === "SEND_TO_USER_INBOX") {
-        throw new Error("TikTok did not confirm a public publication");
-      }
-      if (status.data?.status === "PUBLISH_COMPLETE") {
-        const id = status.data.publicaly_available_post_id?.[0];
-        const publicId =
-          typeof id === "string"
-            ? id
-            : typeof id === "number" && Number.isSafeInteger(id)
-              ? String(id)
-              : "";
-        if (/^\d+$/.test(publicId)) {
-          return {
-            externalPostId: publicId,
-            raw: { publish_id: reference, mode: "direct", bytes: bytes.byteLength },
-          };
-        }
-      }
-      if (attempt + 1 < STATUS_ATTEMPTS)
-        await new Promise((resolve) => setTimeout(resolve, STATUS_INTERVAL_MS));
-    }
+    // One read only. Processing/moderation continues through durable
+    // reconciliation, not a long in-request polling loop or a new upload.
+    const result = await confirmPublication(input, checkpoint!, token);
+    return { ...result, raw: { publish_id: reference, mode: "direct", bytes: bytes.byteLength } };
   } catch {
     throw new PublisherError(
       "TikTok recebeu uma referência de envio, mas a publicação pública não foi confirmada. Confira o provedor antes de republicar.",
-      { retryable: false, externalPostId: reference },
+      { retryable: false, reference: checkpoint },
     );
   }
-  throw new PublisherError(
-    "TikTok ainda não confirmou um post público. O envio não será repetido automaticamente; confira o provedor.",
-    { retryable: false, externalPostId: reference },
-  );
 }

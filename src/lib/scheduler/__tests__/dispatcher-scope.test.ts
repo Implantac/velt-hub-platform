@@ -1,208 +1,351 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// No real OAuth/provider is called by these dispatcher unit tests.
 const state = vi.hoisted(() => ({
   rpc: vi.fn(),
-  content: null as unknown,
-  channel: null as unknown,
+  from: vi.fn(),
   publish: vi.fn(),
-  token: vi.fn(),
+  getFreshToken: vi.fn(),
 }));
 vi.mock("@/integrations/supabase/client.server", () => ({
-  supabaseAdmin: {
-    rpc: state.rpc,
-    from: (table: string) => {
-      const q = {
-        select: () => q,
-        eq: () => q,
-        single: async () => ({
-          data: table === "content" ? state.content : state.channel,
-          error: null,
-        }),
-      };
-      return q;
-    },
-  },
+  supabaseAdmin: { rpc: state.rpc, from: state.from },
 }));
-vi.mock("@/lib/oauth/refresh.server", () => ({ getFreshToken: state.token }));
-vi.mock("@/lib/scheduler/publishers.server", async () => ({
-  PublisherError: (await import("@/lib/scheduler/contracts")).PublisherError,
+vi.mock("@/lib/oauth/refresh.server", () => ({ getFreshToken: state.getFreshToken }));
+vi.mock("../publishers.server", async (original) => ({
+  ...(await original<typeof import("../publishers.server")>()),
   publishToPlatform: state.publish,
 }));
-import { runSchedulerTick } from "@/lib/scheduler/dispatcher.server";
-import { PublisherError } from "@/lib/scheduler/contracts";
+vi.mock("../reconciliation.server", () => ({
+  runPublicationReconciliation: vi.fn(async () => ({ checked: 0, confirmed: 0 })),
+}));
+import { runSchedulerCycle, runSchedulerTick } from "../dispatcher.server";
+import { PublisherError } from "../publishers.server";
+import type { PublishInput } from "../contracts";
 
-const workspaceId = "10000000-0000-4000-8000-000000000001";
-const otherWorkspace = "10000000-0000-4000-8000-000000000002";
+const workspaceId = "11111111-1111-4111-8111-111111111111";
+const channelId = "22222222-2222-4222-8222-222222222222";
+const foreignWorkspace = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const job = {
-  id: "job",
+  id: "33333333-3333-4333-8333-333333333333",
   workspace_id: workspaceId,
-  content_id: "content",
-  channel_id: "channel",
+  content_id: "44444444-4444-4444-8444-444444444444",
+  channel_id: channelId,
+  delivery_token: "55555555-5555-4555-8555-555555555555",
+  status: "processing",
   attempts: 1,
-  max_attempts: 5,
+  max_attempts: 3,
+  reconcile_state: "none",
+  delivery_started_at: null,
+  provider_reference: null,
+  provider_reference_kind: null,
+  provider_platform: null,
+  provider_target: null,
+  external_post_id: null,
 };
+const postId = "12345_987654321";
+let rows: Record<string, unknown>, claimed: (typeof job)[], settled: Record<string, unknown>;
+let completionError: string | null,
+  failureError: string | null,
+  failureOverride: unknown,
+  completionOverride: unknown;
+let completionNull: boolean;
+const calls = (name: string) => state.rpc.mock.calls.filter(([rpc]) => rpc === name);
+
 beforeEach(() => {
   vi.clearAllMocks();
-  state.content = {
-    id: "content",
-    workspace_id: workspaceId,
-    title: "QA",
-    body: "Texto",
-    media: [],
-    type: "post",
+  claimed = [{ ...job }];
+  settled = { ...job };
+  completionError = null;
+  failureError = null;
+  failureOverride = undefined;
+  completionOverride = undefined;
+  completionNull = false;
+  rows = {
+    channels: {
+      id: channelId,
+      workspace_id: workspaceId,
+      platform: "facebook",
+      status: "connected",
+      external_id: "12345",
+      metadata: {},
+    },
+    content: {
+      id: job.content_id,
+      workspace_id: workspaceId,
+      title: "Synthetic fenced dispatch contract",
+      body: "Body",
+      type: "post",
+      media: [],
+      metadata: {},
+    },
   };
-  state.channel = {
-    id: "channel",
-    workspace_id: workspaceId,
-    platform: "instagram",
-    metadata: {},
-    external_id: "test",
-    status: "connected",
-  };
-  state.token.mockResolvedValue({ accessToken: "unit-test-only" });
-  state.publish.mockResolvedValue({ externalPostId: "unit-test-post" });
-  state.rpc.mockImplementation(async (name: string) => ({
-    data: name.startsWith("claim_")
-      ? [job]
-      : name === "complete_scheduler_job"
-        ? { ...job, status: "succeeded", external_post_id: "unit-test-post" }
-        : null,
-    error: null,
-  }));
-  vi.spyOn(console, "error").mockImplementation(() => {});
+  state.from.mockImplementation((table: string) => {
+    const query = { select: vi.fn(), eq: vi.fn(), single: vi.fn() };
+    query.select.mockReturnValue(query);
+    query.eq.mockReturnValue(query);
+    query.single.mockImplementation(async () => ({ data: rows[table], error: null }));
+    return query;
+  });
+  state.getFreshToken.mockResolvedValue({
+    accessToken: "token-test-only",
+    refreshToken: null,
+    expiresAt: null,
+    scope: null,
+    tokenType: "Bearer",
+  });
+  state.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+    if (name === "claim_publication_jobs") return { data: claimed, error: null };
+    if (name === "begin_publication_delivery") {
+      if (settled.id !== args._job_id)
+        settled = { ...claimed.find((row) => row.id === args._job_id)! };
+      settled = {
+        ...settled,
+        id: args._job_id,
+        delivery_started_at: "2026-11-12T12:00:00Z",
+        provider_platform: args._platform,
+        provider_target: args._target,
+        reconcile_state: "pending",
+      };
+      return { data: { ...settled }, error: null };
+    }
+    if (name === "checkpoint_publication_delivery") {
+      settled = {
+        ...settled,
+        provider_reference: args._reference,
+        provider_reference_kind: args._kind,
+      };
+      return { data: { ...settled }, error: null };
+    }
+    if (name === "complete_publication_delivery") {
+      if (completionError) return { data: null, error: { message: completionError } };
+      if (completionNull) return { data: null, error: null };
+      settled = {
+        ...settled,
+        status: "succeeded",
+        reconcile_state: "confirmed",
+        external_post_id: args._external_post_id,
+      };
+      return {
+        data: completionOverride === undefined ? { ...settled } : completionOverride,
+        error: null,
+      };
+    }
+    if (name === "fail_publication_delivery") {
+      if (failureError) return { data: null, error: { message: failureError } };
+      if (failureOverride !== undefined) return { data: failureOverride, error: null };
+      const started = !!settled.delivery_started_at;
+      settled = {
+        ...settled,
+        status: started ? "dead_letter" : "pending",
+        reconcile_state: started ? (args._reference ? "pending" : "review") : "none",
+      };
+      return { data: { ...settled }, error: null };
+    }
+    throw new Error(`Unexpected RPC ${name}`);
+  });
+  state.publish.mockImplementation(async (input: PublishInput) => {
+    await input.beforeWrite?.();
+    await input.checkpoint?.({ kind: "facebook_post", id: postId });
+    return { externalPostId: postId };
+  });
 });
 
-describe("workspace-scoped manual dispatch", () => {
-  it("uses the workspace RPC for a manual request", async () => {
-    const result = await runSchedulerTick({ workspaceId, limit: 3, lockSeconds: 40 });
-    expect(state.rpc).toHaveBeenNthCalledWith(1, "claim_workspace_scheduler_jobs", {
-      _workspace_id: workspaceId,
+describe("workspace-scoped fenced publication dispatch", () => {
+  it("passes workspace to service claim and caps a batch at three", async () => {
+    const result = await runSchedulerTick({ workspaceId, limit: 25, lockSeconds: 300 });
+    expect(state.rpc).toHaveBeenCalledWith("claim_publication_jobs", {
       _limit: 3,
-      _lock_seconds: 40,
+      _lock_seconds: 300,
+      _workspace_id: workspaceId,
     });
-    expect(result).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
-  });
-  it("preserves the global claim only for the cron caller", async () => {
-    await runSchedulerTick({ limit: 2 });
-    expect(state.rpc).toHaveBeenNthCalledWith(1, "claim_scheduler_jobs", {
-      _limit: 2,
-      _lock_seconds: 60,
+    expect(result).toMatchObject({
+      claimed: 1,
+      succeeded: 1,
+      awaitingConfirmation: 0,
+      needsReview: 0,
     });
+    expect(state.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId,
+        channelId,
+        payload: expect.objectContaining({ body: "Body" }),
+        beforeWrite: expect.any(Function),
+        checkpoint: expect.any(Function),
+      }),
+    );
   });
-  it("stops before loading tokens or providers if a scoped claim returns another workspace", async () => {
-    state.rpc.mockResolvedValue({ data: [{ ...job, workspace_id: otherWorkspace }], error: null });
+  it("rejects a cross-workspace claim before querying or sending", async () => {
+    claimed = [{ ...job, workspace_id: foreignWorkspace }];
     await expect(runSchedulerTick({ workspaceId })).rejects.toThrow("different workspace");
-    expect(state.token).not.toHaveBeenCalled();
-    expect(state.publish).not.toHaveBeenCalled();
-    expect(state.rpc).toHaveBeenCalledTimes(1);
-  });
-  it.each(["content", "channel"])(
-    "refuses a mismatched %s before touching a token/provider",
-    async (table) => {
-      if (table === "content")
-        state.content = { ...(state.content as object), workspace_id: otherWorkspace };
-      else state.channel = { ...(state.channel as object), workspace_id: otherWorkspace };
-      const result = await runSchedulerTick({ workspaceId });
-      expect(result).toMatchObject({ claimed: 1, succeeded: 0, failed: 1 });
-      expect(result.jobs[0].error).toMatch(/workspace does not match/);
-      expect(state.publish).not.toHaveBeenCalled();
-      expect(state.token).not.toHaveBeenCalled();
-      expect(state.rpc).not.toHaveBeenCalledWith("complete_scheduler_job", expect.anything());
-    },
-  );
-  it("refuses a disconnected channel before touching a token/provider", async () => {
-    state.channel = { ...(state.channel as object), status: "disconnected" };
-    const result = await runSchedulerTick({ workspaceId });
-    expect(result).toMatchObject({ succeeded: 0, failed: 1 });
-    expect(state.token).not.toHaveBeenCalled();
+    expect(state.from).not.toHaveBeenCalled();
     expect(state.publish).not.toHaveBeenCalled();
   });
-  it("returns an honest empty result without invoking publication", async () => {
-    state.rpc.mockResolvedValue({ data: [], error: null });
+  it("checks the channel workspace independently", async () => {
+    rows.channels = { ...(rows.channels as object), workspace_id: foreignWorkspace };
+    expect(await runSchedulerTick({ workspaceId })).toMatchObject({ failed: 1, succeeded: 0 });
+    expect(state.publish).not.toHaveBeenCalled();
+    expect(calls("begin_publication_delivery")).toHaveLength(0);
+  });
+  it("checks the content workspace independently", async () => {
+    rows.content = { ...(rows.content as object), workspace_id: foreignWorkspace };
+    expect(await runSchedulerTick({ workspaceId })).toMatchObject({ failed: 1 });
+    expect(state.publish).not.toHaveBeenCalled();
+  });
+  it("scopes channel and content queries by both ID and workspace", async () => {
+    await runSchedulerTick({ workspaceId });
+    for (const result of state.from.mock.results)
+      expect(result.value.eq).toHaveBeenCalledWith("workspace_id", workspaceId);
+  });
+  it("returns an honest empty queue", async () => {
+    claimed = [];
     await expect(runSchedulerTick({ workspaceId })).resolves.toEqual({
       claimed: 0,
       succeeded: 0,
       failed: 0,
+      awaitingConfirmation: 0,
+      needsReview: 0,
       jobs: [],
     });
     expect(state.publish).not.toHaveBeenCalled();
   });
-  it("propagates a failed claim instead of manufacturing empty success", async () => {
-    state.rpc.mockResolvedValue({ data: null, error: { message: "claim unavailable" } });
-    await expect(runSchedulerTick({ workspaceId })).rejects.toThrow("claim unavailable");
+  it("never dispatches without OAuth credentials", async () => {
+    state.getFreshToken.mockRejectedValue(new Error("Missing OAuth token"));
+    expect(await runSchedulerTick({ workspaceId })).toMatchObject({ failed: 1 });
     expect(state.publish).not.toHaveBeenCalled();
+    expect(calls("begin_publication_delivery")).toHaveLength(0);
   });
-  it("does not count a failed completion RPC as a confirmed publication", async () => {
-    state.rpc.mockImplementation(async (name: string) => ({
-      data: name.startsWith("claim_") ? [job] : null,
-      error: name === "complete_scheduler_job" ? { message: "completion unavailable" } : null,
-    }));
-    const result = await runSchedulerTick({ workspaceId });
-    expect(result).toMatchObject({ claimed: 1, succeeded: 0, failed: 1 });
-    expect(result.jobs[0].error).toContain("completion unavailable");
-  });
-  it("does not claim success when completion returns zero confirmed rows", async () => {
-    state.rpc.mockImplementation(async (name: string) => ({
-      data: name.startsWith("claim_") ? [job] : null,
-      error: null,
-    }));
-    const result = await runSchedulerTick({ workspaceId });
-    expect(result).toMatchObject({ succeeded: 0, failed: 1 });
-    expect(state.rpc).toHaveBeenCalledWith(
-      "fail_scheduler_job",
-      expect.objectContaining({ _retryable: false, _external_post_id: "unit-test-post" }),
+  it("stops the write when begin is not durably acknowledged", async () => {
+    const implementation = state.rpc.getMockImplementation()!;
+    state.rpc.mockImplementation((name, args) =>
+      name === "begin_publication_delivery"
+        ? Promise.resolve({ data: null, error: { message: "lost boundary acknowledgement" } })
+        : implementation(name, args),
     );
-  });
-  it("keeps a provider-confirmed post out of automatic retry when acknowledgement fails", async () => {
-    state.rpc.mockImplementation(async (name: string) => ({
-      data: name.startsWith("claim_") ? [job] : null,
-      error: name === "complete_scheduler_job" ? { message: "ack failed" } : null,
-    }));
-    await runSchedulerTick({ workspaceId });
-    expect(state.publish).toHaveBeenCalledTimes(1);
-    expect(state.rpc).toHaveBeenCalledWith(
-      "fail_scheduler_job",
-      expect.objectContaining({ _retryable: false, _external_post_id: "unit-test-post" }),
-    );
-  });
-  it("recovers a lost acknowledgement only from a matching committed success row", async () => {
-    state.rpc.mockImplementation(async (name: string) => ({
-      data: name.startsWith("claim_")
-        ? [job]
-        : name === "fail_scheduler_job"
-          ? { ...job, status: "succeeded", external_post_id: "unit-test-post" }
-          : null,
-      error: name === "complete_scheduler_job" ? { message: "ack lost" } : null,
-    }));
-    expect(await runSchedulerTick({ workspaceId })).toMatchObject({ succeeded: 1, failed: 0 });
-  });
-  it("never invokes a provider when an OAuth token is missing", async () => {
-    state.token.mockRejectedValue(new Error("canal sem token OAuth — reconecte"));
+    let sent = false;
+    state.publish.mockImplementation(async (input: PublishInput) => {
+      await input.beforeWrite?.();
+      sent = true;
+      return { externalPostId: postId };
+    });
     expect(await runSchedulerTick({ workspaceId })).toMatchObject({ succeeded: 0, failed: 1 });
-    expect(state.publish).not.toHaveBeenCalled();
-    expect(state.rpc).toHaveBeenCalledWith(
-      "fail_scheduler_job",
-      expect.objectContaining({ _retryable: false, _external_post_id: null }),
+    expect(sent).toBe(false);
+  });
+  it("preserves a locally received reference even if its checkpoint RPC fails", async () => {
+    const implementation = state.rpc.getMockImplementation()!;
+    state.rpc.mockImplementation((name, args) =>
+      name === "checkpoint_publication_delivery"
+        ? Promise.resolve({ data: null, error: { message: "checkpoint response lost" } })
+        : implementation(name, args),
+    );
+    expect(await runSchedulerTick({ workspaceId })).toMatchObject({
+      succeeded: 0,
+      awaitingConfirmation: 1,
+    });
+    expect(calls("complete_publication_delivery")).toHaveLength(0);
+    expect(calls("fail_publication_delivery")[0][1]).toMatchObject({
+      _reference: postId,
+      _reference_kind: "facebook_post",
+    });
+  });
+  it.each(["error", "zero rows"])(
+    "does not report completion with an unconfirmed %s acknowledgement",
+    async (mode) => {
+      completionError = mode === "error" ? "ack lost" : null;
+      completionNull = mode !== "error";
+      expect(await runSchedulerTick({ workspaceId })).toMatchObject({
+        succeeded: 0,
+        awaitingConfirmation: 1,
+      });
+      expect(calls("fail_publication_delivery")[0][1]).toMatchObject({
+        _delivery_token: job.delivery_token,
+        _reference: postId,
+      });
+    },
+  );
+  it("recovers a lost completion response only from matching committed success", async () => {
+    completionError = "response lost after commit";
+    failureOverride = {
+      ...job,
+      status: "succeeded",
+      reconcile_state: "confirmed",
+      external_post_id: postId,
+    };
+    expect(await runSchedulerTick({ workspaceId })).toMatchObject({ succeeded: 1 });
+  });
+  it.each([
+    null,
+    { ...job, status: "processing" },
+    { ...job, status: "succeeded", external_post_id: "12345_other", reconcile_state: "confirmed" },
+    { ...job, workspace_id: foreignWorkspace, status: "dead_letter", reconcile_state: "pending" },
+  ])("fails closed for a missing or conflicting settlement: %j", async (row) => {
+    completionError = "ack lost";
+    failureOverride = row;
+    await expect(runSchedulerTick({ workspaceId })).rejects.toThrow("estado confirmado");
+  });
+  it("does not swallow failure persistence errors", async () => {
+    completionError = "ack lost";
+    failureError = "database down";
+    await expect(runSchedulerTick({ workspaceId })).rejects.toThrow("estado confirmado");
+  });
+  it.each([null, [{ ...job, delivery_token: null }]])(
+    "rejects an unfenced claim instead of using legacy completion",
+    async (data) => {
+      state.rpc.mockResolvedValue({ data, error: null });
+      await expect(runSchedulerTick({ workspaceId })).rejects.toThrow("confirmed fenced job set");
+      expect(state.publish).not.toHaveBeenCalled();
+    },
+  );
+  it("records an accepted reference without treating processing as public", async () => {
+    state.publish.mockImplementation(async (input: PublishInput) => {
+      await input.beforeWrite?.();
+      await input.checkpoint?.({ kind: "facebook_post", id: postId });
+      throw new PublisherError("Awaiting public confirmation", {
+        reference: { kind: "facebook_post", id: postId },
+      });
+    });
+    expect(await runSchedulerTick({ workspaceId })).toMatchObject({
+      succeeded: 0,
+      awaitingConfirmation: 1,
+      failed: 0,
+    });
+    expect(calls("complete_publication_delivery")).toHaveLength(0);
+  });
+  it("separates an uncertain write without any reference from a safe pre-write failure", async () => {
+    state.publish.mockImplementation(async (input: PublishInput) => {
+      await input.beforeWrite?.();
+      throw new PublisherError("Connection reset during POST", { retryable: true });
+    });
+    expect(await runSchedulerTick({ workspaceId })).toMatchObject({
+      succeeded: 0,
+      failed: 0,
+      needsReview: 1,
+    });
+  });
+  it("serializes multiple jobs for one account within the bounded batch", async () => {
+    claimed = [{ ...job }, { ...job, id: "66666666-6666-4666-8666-666666666666" }];
+    let active = 0;
+    let maximum = 0;
+    state.publish.mockImplementation(async (input: PublishInput) => {
+      active++;
+      maximum = Math.max(maximum, active);
+      await Promise.resolve();
+      await input.beforeWrite?.();
+      await input.checkpoint?.({ kind: "facebook_post", id: postId });
+      active--;
+      return { externalPostId: postId };
+    });
+    expect(await runSchedulerTick({ workspaceId })).toMatchObject({ claimed: 2, succeeded: 2 });
+    expect(maximum).toBe(1);
+  });
+  it("runs read-only recovery/checks before new publication claims", async () => {
+    const { runPublicationReconciliation } = await import("../reconciliation.server");
+    await runSchedulerCycle({ workspaceId });
+    expect(runPublicationReconciliation).toHaveBeenCalledWith({ workspaceId, limit: 5 });
+    expect(vi.mocked(runPublicationReconciliation).mock.invocationCallOrder.at(-1)!).toBeLessThan(
+      state.rpc.mock.invocationCallOrder[0],
     );
   });
-  it("rejects an unconfirmed null claim rather than labeling it an empty queue", async () => {
-    state.rpc.mockResolvedValue({ data: null, error: null });
-    await expect(runSchedulerTick({ workspaceId })).rejects.toThrow("confirmed job set");
-  });
-  it("records an accepted upstream reference without labeling pending public confirmation as success", async () => {
-    state.publish.mockRejectedValue(
-      new PublisherError("Pending provider visibility", {
-        retryable: false,
-        externalPostId: "qa-upstream-reference",
-      }),
-    );
-    const result = await runSchedulerTick({ workspaceId });
-    expect(result).toMatchObject({ succeeded: 0, failed: 1 });
-    expect(state.rpc).toHaveBeenCalledWith(
-      "fail_scheduler_job",
-      expect.objectContaining({ _retryable: false, _external_post_id: "qa-upstream-reference" }),
-    );
-    expect(state.rpc).not.toHaveBeenCalledWith("complete_scheduler_job", expect.anything());
+  it.each([0, -1, 51, 1.5])("rejects invalid batch size %s without a claim", async (limit) => {
+    await expect(runSchedulerTick({ workspaceId, limit })).rejects.toThrow("batch limit");
+    expect(state.rpc).not.toHaveBeenCalled();
   });
 });

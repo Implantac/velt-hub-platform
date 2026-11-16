@@ -3,10 +3,14 @@ import { Ban, AlertTriangle, CheckCircle2, Clock, Loader2, XCircle } from "lucid
 export type JobStatus =
   "pending" | "processing" | "succeeded" | "failed" | "dead_letter" | "cancelled";
 
-export const STATUSES: readonly (JobStatus | "all")[] = [
+export type SchedulerFilter = JobStatus | "all" | "confirmation_pending" | "confirmation_review";
+
+export const STATUSES: readonly SchedulerFilter[] = [
   "all",
   "pending",
   "processing",
+  "confirmation_pending",
+  "confirmation_review",
   "succeeded",
   "failed",
   "dead_letter",

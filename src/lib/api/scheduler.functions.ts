@@ -8,7 +8,8 @@ import {
 } from "@/lib/scheduler/publishers.server";
 import { contentMediaUrls } from "@/lib/content/media";
 import { readAllPages } from "./_pagination";
-import { runSchedulerTick } from "@/lib/scheduler/dispatcher.server";
+import { runSchedulerCycle } from "@/lib/scheduler/dispatcher.server";
+import { runPublicationReconciliation } from "@/lib/scheduler/reconciliation.server";
 import { throwIfError } from "./_supabase";
 import { requireWorkspaceRole } from "./_workspace";
 import { WORKSPACE_EDIT_ROLES, WORKSPACE_MANAGE_ROLES } from "@/lib/workspace/permissions";
@@ -173,7 +174,7 @@ export const runSchedulerTickManual = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await requireWorkspaceRole(supabase, data.workspaceId, userId, WORKSPACE_MANAGE_ROLES);
-    return runSchedulerTick({ limit: data.limit, workspaceId: data.workspaceId });
+    return runSchedulerCycle({ limit: data.limit, workspaceId: data.workspaceId });
   });
 
 /** Complete queue read for the workspace screen: status counts are not counts of a truncated/filter-only page. */
@@ -250,4 +251,67 @@ export const getSchedulingOptions = createServerFn({ method: "GET" })
         };
       }),
     };
+  });
+
+/** Checks this execution only. Never invokes a publisher or broadens workspace scope. */
+export const reconcileSchedulerJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid(), jobId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await requireWorkspaceRole(
+      context.supabase,
+      data.workspaceId,
+      context.userId,
+      WORKSPACE_MANAGE_ROLES,
+    );
+    const { data: job, error } = await context.supabase
+      .from("scheduler_jobs")
+      .select("id")
+      .eq("workspace_id", data.workspaceId)
+      .eq("id", data.jobId)
+      .maybeSingle();
+    throwIfError(error);
+    if (!job || job.id !== data.jobId)
+      throw new Error("Publicação não encontrada neste workspace.");
+    return runPublicationReconciliation({ workspaceId: data.workspaceId, jobId: data.jobId });
+  });
+
+/** Explicit operator review, not fabricated provider success and never an implicit retry. */
+export const closePublicationReview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        workspaceId: z.string().uuid(),
+        jobId: z.string().uuid(),
+        note: z.string().trim().min(20).max(1000),
+        checkedProvider: z.literal(true),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await requireWorkspaceRole(
+      context.supabase,
+      data.workspaceId,
+      context.userId,
+      WORKSPACE_MANAGE_ROLES,
+    );
+    const { data: row, error } = await context.supabase.rpc("close_publication_review", {
+      _workspace_id: data.workspaceId,
+      _job_id: data.jobId,
+      _note: data.note,
+      _checked_provider: data.checkedProvider,
+    });
+    throwIfError(error);
+    if (
+      !row ||
+      row.id !== data.jobId ||
+      row.workspace_id !== data.workspaceId ||
+      row.reconcile_state !== "closed" ||
+      row.status !== "dead_letter"
+    )
+      throw new Error("O encerramento da revisão não foi confirmado.");
+    return row;
   });

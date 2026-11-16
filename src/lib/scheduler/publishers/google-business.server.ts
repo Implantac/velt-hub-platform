@@ -5,35 +5,22 @@
  */
 import { composeCaption, detectMediaKind, isFetchableUrl } from "../media";
 import { PublisherError, type PublishInput, type PublishResult } from "../contracts";
+import {
+  beforeProviderWrite,
+  preservePublicationReference,
+  publicationTarget,
+} from "../references";
+
+import { confirmPublication } from "./confirmation.server";
 
 const GBP_API = "https://mybusiness.googleapis.com/v4";
 const CTA_TYPES = ["BOOK", "ORDER", "SHOP", "LEARN_MORE", "SIGN_UP", "CALL"] as const;
 const TOPIC_TYPES = ["STANDARD", "EVENT", "OFFER"] as const;
-const STATUS_ATTEMPTS = 12;
-const STATUS_INTERVAL_MS = 5_000;
 
 type LocalPostResponse = { name?: string; state?: string };
 
 function targetFor(input: PublishInput): string {
-  const cfg = input.channelConfig;
-  const canonical =
-    typeof cfg.external_id === "string"
-      ? cfg.external_id.match(/^accounts\/(\d+)\/locations\/(\d+)$/)
-      : null;
-  const account = cfg.account_id ?? canonical?.[1];
-  const location = cfg.location_id ?? canonical?.[2];
-  if (
-    typeof account !== "string" ||
-    typeof location !== "string" ||
-    !/^\d+$/.test(account) ||
-    !/^\d+$/.test(location)
-  ) {
-    throw new PublisherError(
-      "Canal do Google Business sem account_id/location_id válidos. Reconecte e selecione a unidade.",
-      { retryable: false },
-    );
-  }
-  return `accounts/${account}/locations/${location}`;
+  return publicationTarget("google_business", input.channelConfig);
 }
 
 function destination(input: PublishInput): string | undefined {
@@ -168,8 +155,10 @@ export async function publishGoogleBusiness(input: PublishInput): Promise<Publis
   const target = targetFor(input);
   const body = googleBusinessPostBody(input);
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  await beforeProviderWrite(input);
   const res = await fetch(`${GBP_API}/${target}/localPosts`, {
     method: "POST",
+    redirect: "error",
     headers,
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20_000),
@@ -189,7 +178,10 @@ export async function publishGoogleBusiness(input: PublishInput): Promise<Publis
         (res.status === 403
           ? " Verifique a autorização e a verificação da unidade."
           : " Verifique o resultado antes de tentar novamente."),
-      { retryable: res.status === 429 },
+      {
+        retryable: res.status === 429,
+        definiteRejection: [400, 401, 403, 429].includes(res.status),
+      },
     );
   }
   const reference = post?.name;
@@ -203,26 +195,17 @@ export async function publishGoogleBusiness(input: PublishInput): Promise<Publis
       { retryable: false },
     );
   }
-  try {
-    for (let attempt = 0; attempt < STATUS_ATTEMPTS; attempt++) {
-      if (post.state === "LIVE" || post.state === "RECURRING")
-        return { externalPostId: reference, raw: { state: post.state, topicType: body.topicType } };
-      if (post.state === "REJECTED") break;
-      if (attempt + 1 >= STATUS_ATTEMPTS) break;
-      await new Promise((resolve) => setTimeout(resolve, STATUS_INTERVAL_MS));
-      const status = await fetch(`${GBP_API}/${reference}`, {
-        headers,
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!status.ok) break;
-      post = (await status.json()) as LocalPostResponse;
-      if (post.name !== reference) break;
-    }
-  } catch {
-    /* Preserve the accepted upstream reference; do not issue another create. */
+  const checkpoint = { kind: "google_local_post" as const, id: reference };
+  await preservePublicationReference(input, checkpoint);
+  if (post.state === "LIVE" || post.state === "RECURRING")
+    return { externalPostId: reference, raw: { state: post.state, topicType: body.topicType } };
+  if (post.state !== "REJECTED") {
+    // Query the exact resource once. Further processing uses read-only,
+    // durable reconciliation and never another localPosts.create request.
+    return confirmPublication(input, checkpoint, token);
   }
   throw new PublisherError(
     "O post foi registrado no Google Business, mas o estado público LIVE não foi confirmado. Confira o provedor antes de republicar.",
-    { retryable: false, externalPostId: reference },
+    { retryable: false, reference: checkpoint },
   );
 }

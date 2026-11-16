@@ -1711,6 +1711,19 @@ export type Database = {
       }
       scheduler_jobs: {
         Row: {
+          delivery_token: string | null
+          delivery_started_at: string | null
+          provider_platform: Database["public"]["Enums"]["social_platform"] | null
+          provider_target: string | null
+          provider_reference: string | null
+          provider_reference_kind: string | null
+          reconcile_state: string
+          reconcile_after: string | null
+          reconcile_attempts: number
+          reconcile_token: string | null
+          reconcile_locked_until: string | null
+          reconciled_at: string | null
+          reconcile_note: string | null
           attempts: number
           channel_id: string
           content_id: string
@@ -1727,6 +1740,19 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          delivery_token?: string | null
+          delivery_started_at?: string | null
+          provider_platform?: Database["public"]["Enums"]["social_platform"] | null
+          provider_target?: string | null
+          provider_reference?: string | null
+          provider_reference_kind?: string | null
+          reconcile_state?: string
+          reconcile_after?: string | null
+          reconcile_attempts?: number
+          reconcile_token?: string | null
+          reconcile_locked_until?: string | null
+          reconciled_at?: string | null
+          reconcile_note?: string | null
           attempts?: number
           channel_id: string
           content_id: string
@@ -1743,6 +1769,19 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          delivery_token?: string | null
+          delivery_started_at?: string | null
+          provider_platform?: Database["public"]["Enums"]["social_platform"] | null
+          provider_target?: string | null
+          provider_reference?: string | null
+          provider_reference_kind?: string | null
+          reconcile_state?: string
+          reconcile_after?: string | null
+          reconcile_attempts?: number
+          reconcile_token?: string | null
+          reconcile_locked_until?: string | null
+          reconciled_at?: string | null
+          reconcile_note?: string | null
           attempts?: number
           channel_id?: string
           content_id?: string
@@ -2053,6 +2092,42 @@ export type Database = {
       }
     }
     Functions: {
+      claim_publication_jobs: {
+        Args: { _limit?: number; _lock_seconds?: number; _workspace_id?: string | null }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"][]
+      }
+      begin_publication_delivery: {
+        Args: { _job_id: string; _delivery_token: string; _platform: Database["public"]["Enums"]["social_platform"]; _target: string }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"]
+      }
+      checkpoint_publication_delivery: {
+        Args: { _job_id: string; _delivery_token: string; _kind: string; _reference: string }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"]
+      }
+      complete_publication_delivery: {
+        Args: { _job_id: string; _delivery_token: string; _external_post_id: string }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"]
+      }
+      fail_publication_delivery: {
+        Args: { _job_id: string; _delivery_token: string; _error: string; _retryable?: boolean; _definite_rejection?: boolean; _reference?: string | null; _reference_kind?: string | null }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"]
+      }
+      recover_publication_deliveries: {
+        Args: { _workspace_id?: string | null; _limit?: number; _job_id?: string | null }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"][]
+      }
+      claim_publication_reconciliations: {
+        Args: { _workspace_id?: string | null; _limit?: number; _lock_seconds?: number; _job_id?: string | null }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"][]
+      }
+      settle_publication_reconciliation: {
+        Args: { _job_id: string; _reconcile_token: string; _state: string; _external_post_id?: string | null; _note?: string | null }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"]
+      }
+      close_publication_review: {
+        Args: { _workspace_id: string; _job_id: string; _note: string; _checked_provider: boolean }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"]
+      }
       add_bio_link: {
         Args: { _workspace_id: string; _label: string; _url: string; _kind: string }
         Returns: Database["public"]["Tables"]["bio_links"]["Row"]
@@ -2103,22 +2178,7 @@ export type Database = {
       bio_register_view: { Args: { _slug: string }; Returns: string }
       claim_scheduler_jobs: {
         Args: { _limit?: number; _lock_seconds?: number }
-        Returns: {
-          attempts: number
-          channel_id: string
-          content_id: string
-          created_at: string
-          external_post_id: string | null
-          id: string
-          last_error: string | null
-          locked_until: string | null
-          max_attempts: number
-          run_at: string | null
-          scheduled_at: string
-          status: Database["public"]["Enums"]["job_status"]
-          updated_at: string
-          workspace_id: string
-        }[]
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"][]
         SetofOptions: {
           from: "*"
           to: "scheduler_jobs"
@@ -2128,22 +2188,7 @@ export type Database = {
       }
       complete_scheduler_job: {
         Args: { _external_post_id: string; _job_id: string }
-        Returns: {
-          attempts: number
-          channel_id: string
-          content_id: string
-          created_at: string
-          external_post_id: string | null
-          id: string
-          last_error: string | null
-          locked_until: string | null
-          max_attempts: number
-          run_at: string | null
-          scheduled_at: string
-          status: Database["public"]["Enums"]["job_status"]
-          updated_at: string
-          workspace_id: string
-        }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"]
         SetofOptions: {
           from: "*"
           to: "scheduler_jobs"
@@ -2161,22 +2206,7 @@ export type Database = {
           _content_id: string
           _scheduled_at: string
         }
-        Returns: {
-          attempts: number
-          channel_id: string
-          content_id: string
-          created_at: string
-          external_post_id: string | null
-          id: string
-          last_error: string | null
-          locked_until: string | null
-          max_attempts: number
-          run_at: string | null
-          scheduled_at: string
-          status: Database["public"]["Enums"]["job_status"]
-          updated_at: string
-          workspace_id: string
-        }[]
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"][]
         SetofOptions: {
           from: "*"
           to: "scheduler_jobs"
@@ -2186,22 +2216,7 @@ export type Database = {
       }
       fail_scheduler_job: {
         Args: { _error: string; _job_id: string; _retryable?: boolean; _external_post_id?: string | null }
-        Returns: {
-          attempts: number
-          channel_id: string
-          content_id: string
-          created_at: string
-          external_post_id: string | null
-          id: string
-          last_error: string | null
-          locked_until: string | null
-          max_attempts: number
-          run_at: string | null
-          scheduled_at: string
-          status: Database["public"]["Enums"]["job_status"]
-          updated_at: string
-          workspace_id: string
-        }
+        Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"]
         SetofOptions: {
           from: "*"
           to: "scheduler_jobs"

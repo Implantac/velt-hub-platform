@@ -30,9 +30,24 @@ A confirmação de sincronização, CI remoto e deploy pertence ao relatório op
 - [x] Typecheck/lint/build Vercel, 712 testes em 56 arquivos e auditoria de produção com zero vulnerabilidades reportadas.
 - [x] Build compilado: 22 checks HTTP autenticados e 31 de navegador; 16 análises Axe sem violações detectadas nos estados selecionados; limpeza das fixtures confirmada.
 - [ ] Homologar OAuth/publicação/visibilidade/coleta com contas externas de teste e autorização específica; não usar fixtures como substituto.
-- [ ] Implementar e homologar reconciliação durável de `processing` expirado/resultado ambíguo antes de liberação comercial.
+- [x] Implementar o mecanismo durável de reconciliação de `processing` expirado/resultado ambíguo — concluído na rodada 4 abaixo; homologação externa continua pendente.
 
 Método, escopo e limites em [QA_FUNCIONAL_RODADA_3.md](./docs/QA_FUNCIONAL_RODADA_3.md). CI permanece paralelo ao deploy, sem gate novo; SHA/CI/deploy/smoke remotos são registrados separadamente. “100% funcional” permanece requisito de aceitação, não conclusão presumida.
+
+### Quarta rodada: reconciliação sem duplicidade implícita
+
+- [x] Persistir limite de escrita, execução fenced, conta e referências tipadas antes de etapas subsequentes; não usar upload/container como post público.
+- [x] Recuperar somente tentativas seguras para a fila; resultado iniciado/incerto consulta o envio original ou exige revisão explícita, sem create/publish de continuação.
+- [x] Reservar consulta just-in-time, aplicar fencing/backoff/cooldown/limites; impedir edição/exclusão/retarget/reagendamento incompatíveis.
+- [x] Oferecer filtros, referências legadas e revisão owner/admin traduzidos; nota/checkbox/auditoria, sem override de sucesso e sem reenvio no encerramento.
+- [x] Aplicar uma migration no Supabase VELT, validar paridade SQL e 87 novos checks reais com rollback; dados reais preservados.
+- [x] Reexecutar 203 checks nas cinco suítes locais PGlite focadas; typecheck/lint/build Vercel, 978 testes/61 arquivos e audit de produção com zero vulnerabilidades reportadas.
+- [x] Validar 25 checks HTTP de reconciliação + 22 de regressão com Auth/RLS reais; 22 de navegador e 11 análises Axe sem violações detectadas; fixtures removidas.
+- [x] Documentar estados, intervenção manual, risco de duplicidade e limites em [RECONCILIACAO_PUBLICACOES.md](./docs/RECONCILIACAO_PUBLICACOES.md).
+- [ ] Homologar escrita/leitura/OAuth/coleta/recuperação em provedores reais com autorização específica; mocks/documentação não substituem esse ciclo.
+- [ ] Concluir o checklist operacional/comercial restante, sem liberar clientes por testes/HTTP 200 apenas.
+
+Evidências e distinção entre testes locais, banco real, respostas sintéticas de provedor e publicação remota em [QA_RECONCILIACAO_RODADA_4.md](./docs/QA_RECONCILIACAO_RODADA_4.md). CI paralelo e deploy Git/main-only não foram alterados.
 
 ---
 

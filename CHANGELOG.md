@@ -1,5 +1,22 @@
 # Changelog
 
+## [Reconciliação de publicação — quarta rodada] — 2026-11-12
+
+### Entrega conservadora e recuperação
+
+- Limite de escrita aguardado no banco, checkpoints tipados, identidade de canal e tokens de execução separados do post confirmado. Workers/token antigos não podem iniciar nova escrita após recuperação.
+- Reconciliação durável consulta somente o envio original. Timeout, processamento e falta de leitura não viram publicação fictícia nem republicação automática. Containers/uploads/tracking permanecem distintos de post público; IDs int64 exatos em Node 22.
+- Reserva individual de consultas, backoff até seis horas e revisão após limites automáticos; lote limitado a três publicações e serialização por canal dentro da chamada. Proteções de edição/exclusão/retarget/reagendamento para resultados incertos.
+- Filtros/estados/referências e diálogo pt-BR/en-US. Encerramento exclusivo owner/admin com checkbox/nota/auditoria, sem certificar sucesso/ausência nem reenviar. Falha HTTP e acknowledgement perdido não duplicam a decisão.
+
+### Evidências e limites
+
+- Migration `20261116113916_publication_reconciliation` aplicada no Supabase exclusivo (28 no total), 13 colunas; 87 novos checks reais com rollback. Os 116 SQL reais anteriores são histórico, não reexecução remota desta rodada.
+- Typecheck/lint/build Vercel Node 22, 978 testes/61 arquivos, audit de produção sem vulnerabilidades reportadas; cinco suítes PGlite focadas somaram 203 checks aprovados.
+- Runtime isolado: 25 checks de reconciliação + 22 de regressão; navegador: 22 checks, 11 análises Axe sem violações detectadas, larguras 320/360/390 px. Auth/RLS/persistência reais; observações positivas de provedor explicitamente sintéticas em transporte fora do app.
+- Fixtures removidas, owner/workspace reais preservados, sem conexão/publicação social real. Main-only/CI paralelo mantidos; CI/deploy/smoke remotos são evidência separada.
+- Consulte `docs/QA_RECONCILIACAO_RODADA_4.md` e `docs/RECONCILIACAO_PUBLICACOES.md`. Homologação externa e liberação para clientes continuam pendentes; não é garantia de exactly-once nem conclusão de “100% funcional”.
+
 ## [Integridade funcional — terceira rodada] — 2026-11-12
 
 ### Fluxo real e persistência

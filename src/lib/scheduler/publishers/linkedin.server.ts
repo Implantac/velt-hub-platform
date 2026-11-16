@@ -14,6 +14,12 @@ import { composeCaption, detectMediaKind, isFetchableUrl } from "../media";
 import { downloadPublicMedia } from "../media-download.server";
 import { PublisherError } from "../contracts";
 import type { PublishInput, PublishResult } from "../contracts";
+import {
+  beforeProviderWrite,
+  preservePublicationReference,
+  publicationTarget,
+} from "../references";
+import { confirmPublication } from "./confirmation.server";
 
 const LINKEDIN_API = "https://api.linkedin.com/rest";
 /** Bump deliberately: LinkedIn retires versions roughly yearly. */
@@ -34,15 +40,7 @@ function token(input: PublishInput): string {
 
 /** Author URN: organisation when present, otherwise the person. */
 function authorUrn(input: PublishInput): string {
-  const org = (input.channelConfig.organization_id as string | undefined) ?? null;
-  if (org) return `urn:li:organization:${org}`;
-  const person =
-    (input.channelConfig.person_id as string | undefined) ??
-    (input.channelConfig.external_id as string | undefined);
-  if (person) return person.startsWith("urn:li:") ? person : `urn:li:person:${person}`;
-  throw new PublisherError("Canal do LinkedIn sem organization_id nem person_id — reconecte.", {
-    retryable: false,
-  });
+  return publicationTarget("linkedin", input.channelConfig);
 }
 
 const headers = (accessToken: string) => ({
@@ -53,9 +51,17 @@ const headers = (accessToken: string) => ({
 });
 
 /** Uploads an image and returns its image URN. */
-async function uploadImage(accessToken: string, owner: string, imageUrl: string): Promise<string> {
+async function uploadImage(
+  input: PublishInput,
+  accessToken: string,
+  owner: string,
+  imageUrl: string,
+): Promise<string> {
+  await beforeProviderWrite(input);
   const init = await fetch(`${LINKEDIN_API}/images?action=initializeUpload`, {
     method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
     headers: headers(accessToken),
     body: JSON.stringify({ initializeUploadRequest: { owner } }),
   });
@@ -86,8 +92,20 @@ async function uploadImage(accessToken: string, owner: string, imageUrl: string)
     });
   }
 
-  const put = await fetch(uploadUrl, {
+  const uploadTarget = new URL(uploadUrl);
+  if (
+    uploadTarget.protocol !== "https:" ||
+    !uploadTarget.hostname.endsWith(".linkedin.com") ||
+    uploadTarget.username ||
+    uploadTarget.password ||
+    uploadTarget.port
+  )
+    throw new PublisherError("LinkedIn retornou um destino de upload não reconhecido.");
+  await beforeProviderWrite(input);
+  const put = await fetch(uploadTarget, {
     method: "PUT",
+    redirect: "error",
+    signal: AbortSignal.timeout(60_000),
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/octet-stream",
@@ -114,7 +132,7 @@ export async function publishLinkedIn(input: PublishInput): Promise<PublishResul
   let content: Record<string, unknown>;
 
   if (imageUrl) {
-    const imageUrn = await uploadImage(accessToken, author, imageUrl);
+    const imageUrn = await uploadImage(input, accessToken, author, imageUrl);
     content = {
       media: { title: (input.payload.title ?? "").slice(0, 200), id: imageUrn },
     };
@@ -144,8 +162,11 @@ export async function publishLinkedIn(input: PublishInput): Promise<PublishResul
     isReshareDisabledByAuthor: false,
   };
 
+  await beforeProviderWrite(input);
   const res = await fetch(`${LINKEDIN_API}/posts`, {
     method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
     headers: headers(accessToken),
     body: JSON.stringify(body),
   });
@@ -154,6 +175,7 @@ export async function publishLinkedIn(input: PublishInput): Promise<PublishResul
     const detail = (await res.text()).slice(0, 400);
     throw new PublisherError(`LinkedIn recusou a publicação (${res.status}): ${detail}`, {
       retryable: res.status === 429,
+      definiteRejection: [400, 401, 403, 429].includes(res.status),
     });
   }
 
@@ -164,5 +186,7 @@ export async function publishLinkedIn(input: PublishInput): Promise<PublishResul
       "LinkedIn não retornou o identificador da publicação. Verifique o provedor antes de tentar novamente.",
       { retryable: false },
     );
-  return { externalPostId: urn };
+  const reference = { kind: "linkedin_post" as const, id: urn };
+  await preservePublicationReference(input, reference);
+  return confirmPublication(input, reference, accessToken);
 }

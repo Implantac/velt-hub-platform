@@ -7,6 +7,7 @@
  */
 
 import type { PlatformId } from "@/lib/growth/platform-rules";
+import type { PublicationReference } from "./references";
 
 /** Every platform the dispatcher knows how to route. */
 export type Platform = PlatformId;
@@ -24,6 +25,10 @@ export interface PublishInput {
     [k: string]: unknown;
   };
   channelConfig: Record<string, unknown>;
+  /** Fenced database boundary, awaited immediately before any upstream write. */
+  beforeWrite?: () => Promise<void>;
+  /** Durable non-secret reference, awaited before further provider operations. */
+  checkpoint?: (reference: PublicationReference) => Promise<void>;
 }
 
 export interface PublishResult {
@@ -38,12 +43,25 @@ export interface PublishResult {
  */
 export class PublisherError extends Error {
   readonly retryable: boolean;
-  /** An upstream resource/tracking reference, not a statement that it is publicly live. */
+  /** Legacy alias for an upstream reference; never treat this alone as public success. */
   readonly externalPostId?: string;
-  constructor(message: string, opts: { retryable?: boolean; externalPostId?: string } = {}) {
+  readonly reference?: PublicationReference;
+  /** Only an explicit upstream refusal can make a started, reference-free write safe to retry. */
+  readonly definiteRejection: boolean;
+  constructor(
+    message: string,
+    opts: {
+      retryable?: boolean;
+      externalPostId?: string;
+      reference?: PublicationReference;
+      definiteRejection?: boolean;
+    } = {},
+  ) {
     super(message);
     this.name = "PublisherError";
     this.retryable = opts.retryable ?? false;
-    this.externalPostId = opts.externalPostId;
+    this.reference = opts.reference;
+    this.externalPostId = opts.reference?.id ?? opts.externalPostId;
+    this.definiteRejection = opts.definiteRejection ?? false;
   }
 }

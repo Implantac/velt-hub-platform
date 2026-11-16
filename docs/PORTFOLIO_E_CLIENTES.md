@@ -40,7 +40,18 @@ A finalidade de portfólio não reduz o requisito de persistência, permissões 
 - **Analytics/relatórios:** a ressalva da rodada 2 foi substituída por agregação da **última coleta por conteúdo × canal no período**. Coletas repetidas não são somadas; continuam cumulativas, não incrementos semanais/diários nem alcance de pessoas únicas.
 - **Validação:** typecheck/lint/build, 712 testes/56 arquivos, 116 checks SQL no schema instalado, 22 checks HTTP autenticados e 31 de navegador. Os 16 estados selecionados de Axe terminaram sem violações detectadas. Fixtures removidas e fingerprints do workspace/membership reais preservados. Não é declaração de “100% funcional” nem homologação de provedores.
 
-Detalhes, sete migrations já aplicadas, método de isolamento e limites em [QA_FUNCIONAL_RODADA_3.md](./QA_FUNCIONAL_RODADA_3.md). A reconciliação durável de jobs em processamento/resultado ambíguo permanece pendente; não reenvie sem verificar o provedor.
+Detalhes históricos, sete migrations da rodada 3, método de isolamento e limites em [QA_FUNCIONAL_RODADA_3.md](./QA_FUNCIONAL_RODADA_3.md). A lacuna de mecanismo durável foi trabalhada na rodada 4 abaixo; homologação real continua pendente e não se deve reenviar sem verificar o provedor.
+
+## Quarta rodada: reconciliação durável, sem falso publicado
+
+- **Checkpoints e fencing:** limite de escrita aguardado no banco; execução/conta/referência upstream separados do post confirmado. Recuperação não reutiliza o token de uma tentativa comprovadamente não iniciada.
+- **Consulta sem reenvio:** o ciclo consulta a referência original com lease, backoff e limites. Processamento/erro de leitura/referência incerta não viram sucesso nem outra publicação. Após limites, revisão owner/admin.
+- **Intervenção auditada:** encerrar revisão exige nota e confirmação. Registra decisão/ator sem certificar publicação ou ausência e sem reenviar; novo agendamento é ação separada, com aviso de possível duplicidade.
+- **Interface e proteção:** estados/filtros/referências/diálogo pt-BR/en-US, cooldowns e permissões; conteúdo/canal/identidade incertos protegidos contra alterações destrutivas ou reagendamento incompatível.
+- **Validação selecionada:** 978 testes/61 arquivos, 87 novos checks SQL reais/rollback, 203 locais PGlite em cinco suítes, 25 checks HTTP de reconciliação + 22 de regressão, 22 de navegador e 11 análises Axe sem violações detectadas. Os 116 checks SQL reais da rodada 3 não foram reexecutados remotamente.
+- **Isolamento:** Auth/RLS/persistência reais com fixtures removidas; respostas positivas de provedor somente em transporte sintético fora do app, sem conta/conexão/publicação externa real. Não é homologação de provedores nem liberação comercial.
+
+Consulte [evidências e limites](./QA_RECONCILIACAO_RODADA_4.md) e [manual de recuperação](./RECONCILIACAO_PUBLICACOES.md). O resultado não é uma promessa de exactly-once em serviços externos ou de ausência de bugs. A finalidade de portfólio não permite operação vazia, falso sucesso ou mock em produção.
 
 ## Rótulo de portfólio não é modo de simulação
 
@@ -97,14 +108,14 @@ Na sincronização inicial, o deploy pelo SHA foi disparado explicitamente, pois
 
 ## Banco e automações existentes
 
-A migration `20261112143126_workspace_owner_returning_visibility.sql` já havia sido aplicada no Supabase exclusivo e está versionada. As sete migrations da rodada 3 também foram aplicadas, chegando a 27 no ambiente auditado; nomes e testes em [QA_FUNCIONAL_RODADA_3.md](./QA_FUNCIONAL_RODADA_3.md#migrations-desta-rodada). Não reaplique essas migrations manualmente nesse projeto. Não desative RLS para corrigir bootstrap.
+A migration `20261112143126_workspace_owner_returning_visibility.sql` já havia sido aplicada no Supabase exclusivo e está versionada. As sete migrations da rodada 3 e `20261116113916_publication_reconciliation.sql` da rodada 4 também foram aplicadas, chegando a 28 no ambiente auditado; nomes/testes em [rodada 3](./QA_FUNCIONAL_RODADA_3.md#migrations-desta-rodada) e [rodada 4](./QA_RECONCILIACAO_RODADA_4.md#schema-e-operação-auditados). Não reaplique essas migrations manualmente nesse projeto. Não desative RLS para corrigir bootstrap.
 
 Os dois crons em operação usam um segredo do Vault chamado `velt_cron_secret`, não `ALTER DATABASE`. O segredo deve ser idêntico a `CRON_SECRET` no ambiente protegido do servidor. O comando do job consulta o Vault na execução e não contém o valor em texto.
 
 - `velt-scheduler-tick`: a cada minuto, `POST /api/public/cron/scheduler-tick`.
 - `velt-analytics-sync`: a cada 6 horas, `POST /api/public/cron/analytics-sync`.
 
-Um HTTP 200 sem canais ou jobs não valida publicação nem coleta real. O primeiro disparo automático de analytics não foi comprovado na auditoria inicial.
+Um HTTP 200 sem canais ou jobs não valida publicação nem coleta real. A leitura somente de metadados/histórico SQL da rodada 4 confirmou os dois jobs ativos, com 1440/4 disparos nas respectivas cadências na janela de 24 horas, sem falhas SQL. Isso não comprova status HTTP downstream, publicação ou coleta real; a auditoria não leu nem alterou segredos/comandos de cron.
 
 Há uma limitação histórica de instalação: uma migration antiga tenta `ALTER TABLE` em tabela de Realtime que pertence ao Supabase. No provisionamento atual foi omitida somente essa instrução redundante, após confirmar que RLS já estava habilitada. A instalação limpa de todas as migrations pelo CLI ainda precisa de uma homologação específica. Não altere ownership para contornar isso.
 
@@ -123,7 +134,8 @@ Há uma limitação histórica de instalação: uma migration antiga tenta `ALTE
 - [ ] Revisar permissões de storage, upload e egress para redes privadas; completar proteção contra DNS rebinding.
 - [ ] Revisar LGPD, retenção/exclusão, termos, consentimentos e credenciais por ambiente/cliente.
 - [ ] Concluir tradução dos módulos avançados e auditoria manual de teclado/leitor de tela.
-- [ ] Implementar/homologar reconciliação durável de execuções sem confirmação e referências upstream; não republicar automaticamente um item possivelmente aceito.
+- [x] Implementar o núcleo durável de reconciliação/revisão e validá-lo com banco real, concorrência e observações sintéticas — rodada 4.
+- [ ] Homologar reconciliação/recuperação externamente e sua operação contínua; não republicar automaticamente um item possivelmente aceito.
 - [ ] Monitorar crons, filas paradas, erros, quotas e custo. Definir suporte e resposta a incidentes.
 - [ ] Desligar o rótulo de portfólio somente quando a liberação comercial estiver aprovada.
 

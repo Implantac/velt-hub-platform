@@ -25,12 +25,16 @@ vi.mock("@tanstack/react-start", () => ({
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
+  reconcile: vi.fn(),
   provider: vi.fn(),
   sign: vi.fn(),
   caps: vi.fn(),
   preflight: vi.fn(),
 }));
-vi.mock("@/lib/scheduler/dispatcher.server", () => ({ runSchedulerTick: mocks.dispatch }));
+vi.mock("@/lib/scheduler/dispatcher.server", () => ({ runSchedulerCycle: mocks.dispatch }));
+vi.mock("@/lib/scheduler/reconciliation.server", () => ({
+  runPublicationReconciliation: mocks.reconcile,
+}));
 vi.mock("@/lib/scheduler/publishers.server", () => ({
   publisherCapabilities: mocks.caps,
   preflightOrThrow: mocks.preflight,
@@ -77,6 +81,8 @@ import {
   cancelSchedulerJob,
   listSchedulerJobs,
   runSchedulerTickManual,
+  reconcileSchedulerJob,
+  closePublicationReview,
 } from "@/lib/api/scheduler.functions";
 import { startOAuthConnect } from "@/lib/api/oauth.functions";
 
@@ -168,7 +174,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.caps.mockReturnValue([{ platform: "facebook", implemented: true, credentialsReady: true }]);
   mocks.preflight.mockReset();
-  mocks.dispatch.mockResolvedValue({ claimed: 0, succeeded: 0, failed: 0, jobs: [] });
+  mocks.dispatch.mockResolvedValue({
+    claimed: 0,
+    succeeded: 0,
+    failed: 0,
+    awaitingConfirmation: 0,
+    needsReview: 0,
+    jobs: [],
+    reconciliation: { confirmed: 0 },
+  });
+  mocks.reconcile.mockResolvedValue({ recovered: 0, checked: 0, providerQueries: 0, confirmed: 0 });
 });
 
 const editOperations: Array<[string, unknown, object]> = [
@@ -200,6 +215,17 @@ const manageOperations: Array<[string, unknown, object]> = [
   ["deleteChannel", deleteChannel, { workspaceId, id }],
   ["runSchedulerTickManual", runSchedulerTickManual, { workspaceId }],
   ["startOAuthConnect", startOAuthConnect, { workspaceId, provider: "instagram" }],
+  ["reconcileSchedulerJob", reconcileSchedulerJob, { workspaceId, jobId: id }],
+  [
+    "closePublicationReview",
+    closePublicationReview,
+    {
+      workspaceId,
+      jobId: id,
+      checkedProvider: true,
+      note: "Checked the original provider reference; QA only",
+    },
+  ],
 ];
 
 describe("mutation authorization is explicit before any write", () => {
@@ -572,5 +598,97 @@ describe("scheduler confirmation and tenant scope", () => {
       action: "eq",
       args: ["status", "cancelled"],
     });
+  });
+});
+
+describe("publication reconciliation actions", () => {
+  const note = "Checked the provider account and original reference; synthetic QA only";
+  const input = { workspaceId, jobId: id, note, checkedProvider: true };
+  it.each(["owner", "admin"])(
+    "%s can check only one job from the selected workspace",
+    async (role) => {
+      const f = fixture({ role, results: { scheduler_jobs: ok({ id }) } });
+      await invoke(reconcileSchedulerJob, { workspaceId, jobId: id }, f);
+      expect(mocks.reconcile).toHaveBeenCalledExactlyOnceWith({ workspaceId, jobId: id });
+      expect(mocks.dispatch).not.toHaveBeenCalled();
+      expect(f.calls).toContainEqual({
+        table: "scheduler_jobs",
+        action: "eq",
+        args: ["workspace_id", workspaceId],
+      });
+      expect(f.calls).toContainEqual({ table: "scheduler_jobs", action: "eq", args: ["id", id] });
+    },
+  );
+  it.each([null, { id: otherId }])("does not check a hidden/foreign job %j", async (row) => {
+    const f = fixture({ results: { scheduler_jobs: ok(row) } });
+    await expect(invoke(reconcileSchedulerJob, { workspaceId, jobId: id }, f)).rejects.toThrow(
+      "não encontrada",
+    );
+    expect(mocks.reconcile).not.toHaveBeenCalled();
+  });
+  it("propagates a failed scope lookup before any provider check", async () => {
+    const f = fixture({ results: { scheduler_jobs: failure("job lookup unavailable") } });
+    await expect(invoke(reconcileSchedulerJob, { workspaceId, jobId: id }, f)).rejects.toThrow(
+      "lookup unavailable",
+    );
+    expect(mocks.reconcile).not.toHaveBeenCalled();
+  });
+  it.each(["owner", "admin"])(
+    "%s closes through the authenticated audit RPC, never a publisher",
+    async (role) => {
+      const row = {
+        id,
+        workspace_id: workspaceId,
+        status: "dead_letter",
+        reconcile_state: "closed",
+      };
+      const f = fixture({ role, rpc: { close_publication_review: ok(row) } });
+      await expect(
+        invoke(closePublicationReview, { ...input, note: "  " + note + "  " }, f),
+      ).resolves.toEqual(row);
+      expect(mutations(f)).toEqual([
+        {
+          table: "close_publication_review",
+          action: "rpc",
+          args: [{ _workspace_id: workspaceId, _job_id: id, _note: note, _checked_provider: true }],
+        },
+      ]);
+      expect(mocks.dispatch).not.toHaveBeenCalled();
+      expect(mocks.reconcile).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    null,
+    { id, workspace_id: workspaceId, status: "dead_letter", reconcile_state: "review" },
+    { id: otherId, workspace_id: workspaceId, status: "dead_letter", reconcile_state: "closed" },
+    { id, workspace_id: otherId, status: "dead_letter", reconcile_state: "closed" },
+    { id, workspace_id: workspaceId, status: "succeeded", reconcile_state: "closed" },
+  ])("refuses an unconfirmed or contradictory closure %j", async (row) => {
+    const f = fixture({ rpc: { close_publication_review: ok(row) } });
+    await expect(invoke(closePublicationReview, input, f)).rejects.toThrow("não foi confirmado");
+  });
+  it.each([
+    { checkedProvider: false },
+    { checkedProvider: undefined },
+    { note: "short" },
+    { note: " ".repeat(30) },
+    { note: "a".repeat(1001) },
+  ])("requires an explicit, nontrivial review before any SQL call %j", async (patch) => {
+    const f = fixture();
+    await expect(invoke(closePublicationReview, { ...input, ...patch }, f)).rejects.toThrow();
+    expect(f.calls).toEqual([]);
+  });
+  it("propagates a failed closure without claiming success", async () => {
+    const f = fixture({ rpc: { close_publication_review: failure("review lease in progress") } });
+    await expect(invoke(closePublicationReview, input, f)).rejects.toThrow("lease in progress");
+  });
+  it.each(["viewer", "editor"])("%s cannot check or close a review", async (role) => {
+    for (const fn of [reconcileSchedulerJob, closePublicationReview]) {
+      const f = fixture({ role });
+      await expect(invoke(fn, input, f)).rejects.toThrow("forbidden");
+      expect(mutations(f)).toEqual([]);
+    }
+    expect(mocks.dispatch).not.toHaveBeenCalled();
+    expect(mocks.reconcile).not.toHaveBeenCalled();
   });
 });

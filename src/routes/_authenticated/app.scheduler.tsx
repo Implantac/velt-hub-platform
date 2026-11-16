@@ -16,6 +16,8 @@ import { PageTransition } from "@/components/app/Motion";
 import { useWorkspaceMutation, useWorkspaceQuery } from "@/lib/query/use-workspace-query";
 import {
   cancelSchedulerJob,
+  reconcileSchedulerJob,
+  closePublicationReview,
   getSchedulerOverview,
   runSchedulerTickManual,
 } from "@/lib/api/scheduler.functions";
@@ -24,6 +26,7 @@ import { STATUSES } from "@/features/scheduler/constants";
 import { SchedulerFilters } from "@/features/scheduler/components/SchedulerFilters";
 import { SchedulerTable } from "@/features/scheduler/components/SchedulerTable";
 import { BestTimeCard } from "@/features/scheduler/components/BestTimeCard";
+import { PublicationReviewDialog } from "@/features/scheduler/components/PublicationReviewDialog";
 import { PublishCapabilityStrip } from "@/features/scheduler/components/PublishCapabilityStrip";
 
 export const Route = createFileRoute("/_authenticated/app/scheduler")({
@@ -42,6 +45,9 @@ function SchedulerPageWorkspace() {
   const list = useServerFn(getSchedulerOverview);
   const cancel = useServerFn(cancelSchedulerJob);
   const tick = useServerFn(runSchedulerTickManual);
+  const check = useServerFn(reconcileSchedulerJob);
+  const closeReview = useServerFn(closePublicationReview);
+  const [reviewJob, setReviewJob] = useState<SchedulerJob | null>(null);
 
   const [filter, setFilter] = useState<(typeof STATUSES)[number]>("all");
 
@@ -55,6 +61,7 @@ function SchedulerPageWorkspace() {
       });
       return rows as unknown as SchedulerJob[];
     },
+    { refetchInterval: 30_000 },
   );
   const invalidateKey = q.wsId
     ? [
@@ -63,7 +70,13 @@ function SchedulerPageWorkspace() {
         ["scheduler-options", q.wsId],
       ]
     : ["scheduler"];
-  const visibleJobs = (q.data ?? []).filter((job) => filter === "all" || job.status === filter);
+  const visibleJobs = (q.data ?? []).filter(
+    (job) =>
+      filter === "all" ||
+      job.status === filter ||
+      (filter === "confirmation_pending" && job.reconcile_state === "pending") ||
+      (filter === "confirmation_review" && job.reconcile_state === "review"),
+  );
 
   const cancelMut = useWorkspaceMutation(
     (jobId: string) => cancel({ data: { workspaceId: q.wsId!, jobId } }),
@@ -73,11 +86,46 @@ function SchedulerPageWorkspace() {
   const tickMut = useWorkspaceMutation(() => tick({ data: { workspaceId: q.wsId!, limit: 10 } }), {
     invalidate: invalidateKey,
     successMessage: (r) =>
-      t("scheduler.ran", { count: r.claimed, succeeded: r.succeeded, failed: r.failed }),
+      t("scheduler.ran", {
+        count: r.claimed,
+        succeeded: r.succeeded,
+        failed: r.failed,
+        pending: r.awaitingConfirmation,
+        review: r.needsReview,
+        confirmed: r.reconciliation.confirmed,
+      }),
   });
+
+  const checkMut = useWorkspaceMutation(
+    (jobId: string) => check({ data: { workspaceId: q.wsId!, jobId } }),
+    {
+      invalidate: invalidateKey,
+      successMessage: (result) =>
+        result.checked === 0 && result.recovered === 0
+          ? t("scheduler.noCheckDue")
+          : t("scheduler.checkedSummary", {
+              queries: result.providerQueries,
+              confirmed: result.confirmed,
+              pending: result.pending,
+              review: result.review,
+              requeued: result.safelyRequeued,
+            }),
+    },
+  );
+  const closeMut = useWorkspaceMutation(
+    (input: { jobId: string; note: string }) =>
+      closeReview({
+        data: { workspaceId: q.wsId!, ...input, checkedProvider: true },
+      }),
+    { invalidate: invalidateKey, successMessage: t("scheduler.reviewClosed") },
+  );
 
   const counts = (q.data ?? []).reduce<Record<string, number>>((acc, j) => {
     acc[j.status] = (acc[j.status] ?? 0) + 1;
+    if (j.reconcile_state === "pending")
+      acc.confirmation_pending = (acc.confirmation_pending ?? 0) + 1;
+    if (j.reconcile_state === "review")
+      acc.confirmation_review = (acc.confirmation_review ?? 0) + 1;
     return acc;
   }, {});
 
@@ -93,6 +141,9 @@ function SchedulerPageWorkspace() {
         <PublishCapabilityStrip />
         <WorkspaceAccessNotice access={access} />
         <p className="text-xs text-muted-foreground">{t("access.queueHelp")}</p>
+        <p className="rounded-lg border border-border/60 bg-card/40 p-4 text-sm leading-relaxed text-muted-foreground">
+          {t("scheduler.reconciliationHelp")}
+        </p>
         <ScheduleComposer canEdit={access.canEdit} />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
@@ -103,7 +154,13 @@ function SchedulerPageWorkspace() {
               counts={counts}
               total={q.data?.length ?? 0}
               onTick={() => tickMut.mutate()}
-              tickDisabled={!access.canManage || !q.wsId || tickMut.isPending}
+              tickDisabled={
+                !access.canManage ||
+                !q.wsId ||
+                tickMut.isPending ||
+                checkMut.isPending ||
+                closeMut.isPending
+              }
               tickPending={tickMut.isPending}
             />
           </div>
@@ -134,6 +191,19 @@ function SchedulerPageWorkspace() {
             jobs={visibleJobs}
             onCancel={(id) => cancelMut.mutate(id)}
             cancelPending={!access.canEdit || cancelMut.isPending}
+            canManage={access.canManage}
+            onCheck={(id) => checkMut.mutate(id)}
+            checkPending={checkMut.isPending || tickMut.isPending || closeMut.isPending}
+            onReview={setReviewJob}
+          />
+        )}
+        {reviewJob && (
+          <PublicationReviewDialog
+            key={reviewJob.id}
+            job={reviewJob}
+            pending={closeMut.isPending}
+            onCancel={() => setReviewJob(null)}
+            onConfirm={(jobId, note) => closeMut.mutateAsync({ jobId, note })}
           />
         )}
       </div>

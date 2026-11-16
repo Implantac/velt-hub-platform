@@ -16,17 +16,17 @@ O diferencial não é ser mais um agendador de posts. É ser a camada de **julga
 | Autenticação, workspace e navegação | Bootstrap e cache por usuário; regressões de login/recarga/recuperação incluídas                         |
 | Perfil e equipe                     | Nome carregado/validado, save confirmado, rascunho preservado e consulta de membros sob RLS              |
 | Conteúdo                            | Criar/editar texto e URLs de mídia com persistência confirmada; salvar não publica; sem upload/carrossel |
-| Agendamento                         | Enqueue/cancelamento atômicos, horário futuro e RBAC; tratamento conservador de resultados ambíguos      |
+| Agendamento                         | Enqueue/cancelamento atômicos, checkpoints/reconciliação duráveis e revisão auditada sem reenvio         |
 | Interface e idioma                  | Fluxo principal pt-BR/en-US; tradução avançada ainda parcial                                             |
 | USE Brain                           | Regras determinísticas por padrão; não é IA generativa nem pesquisa de mercado ao vivo                   |
 | Oportunidades globais               | Catálogo demonstrativo identificado na interface                                                         |
 | Publicadores sociais                | Código implementado para algumas plataformas; requer credenciais, aprovações e homologação real          |
 | Métricas e cron                     | Infraestrutura configurada; coleta real depende de canais autorizados e publicações reais                |
-| RLS/RBAC                            | 116 checks SQL reais aprovados com rollback; tenant/owner/plano/estados protegidos; não é pentest        |
+| RLS/RBAC                            | 87 novos checks reais de reconciliação/rollback; 116 históricos de integridade; não é pentest            |
 | IA, Google login e SMTP             | Dependem de configuração/validação; Google login não é exibido sem opt-in                                |
 | Commerce Hub / RAG                  | Não implementados; não prometer como recursos disponíveis                                                |
 
-Veja [portfólio e checklist para clientes](./docs/PORTFOLIO_E_CLIENTES.md) para escopo e pendências. A [rodada 3 de integridade funcional](./docs/QA_FUNCIONAL_RODADA_3.md) registra 712 testes, 116 checks SQL, 22 checks HTTP autenticados e 31 checks de navegador, com 16 análises Axe sem violações detectadas. São camadas de evidência diferentes; nenhuma equivale a homologação externa.
+Veja [portfólio e checklist para clientes](./docs/PORTFOLIO_E_CLIENTES.md) para escopo e pendências. A [rodada 4 de reconciliação](./docs/QA_RECONCILIACAO_RODADA_4.md) registra 978 testes/61 arquivos, 87 novos checks SQL reais, 25 checks HTTP de reconciliação, 22 de regressão funcional e 22 de navegador, com 11 análises Axe sem violações detectadas. As cinco suítes SQL locais somaram 203 checks em uma execução focada PGlite. Os 116 checks SQL reais da [rodada 3](./docs/QA_FUNCIONAL_RODADA_3.md) são históricos, não um novo run remoto. São camadas de evidência diferentes; nenhuma equivale a homologação externa.
 
 A honestidade é um requisito de produto: a tela de Agendamento distingue configuração presente de conexão autorizada. A API exige pré-voo e conexão/token para enfileirar, mas isso não comprova validade atual do grant, aprovação do app ou visibilidade da publicação. Erros e resultados sem confirmação não são apresentados como sucesso.
 
@@ -149,10 +149,10 @@ Cada achado traz **por que** e **como corrigir**. Nada é um número solto.
 
 `src/lib/scheduler/publishers/` implementa as APIs reais:
 
-- **Instagram** — container → poll de status → publish (o protocolo de 3 passos que a maioria das integrações erra).
+- **Instagram** — container → status → publish → confirmação da mídia. Container pronto/publicado sem ID da mídia não é tratado como post público confirmado.
 - **Facebook Page** — photo / video / feed por tipo de mídia.
-- **YouTube** — sessão de upload resumível, com baixa do asset e guarda de tamanho.
-- **LinkedIn** — Posts API versionada (`LinkedIn-Version`), upload de imagem incluso.
+- **YouTube** — sessão de upload resumível, com baixa do asset, guarda de tamanho e conferência de canal/processamento/visibilidade pública.
+- **LinkedIn** — Posts API versionada (`LinkedIn-Version`), upload de imagem incluso. Confirmar pelo GET pode exigir permissão restrita além da escrita; sua ausência exige revisão, não reenvio.
 - **TikTok** — Content Posting API em Direct Post, somente com `TIKTOK_DIRECT_POST=true` e app autorizada. Inbox não conta como publicação; conclusão exige status e ID público confirmado. IDs int64 não perdem precisão. Upload atual de chunk único até 64 MiB, não multipart completo.
 - **Google Business Profile** — API v4 `localPosts`, com unidade explicitamente escolhida e estado atual Voice of Merchant. `summary` obrigatório, CTA opcional; `CALL` omite URL, `OFFER`/`EVENT` exigem calendário. Aceitação/processamento não equivale a publicação visível. Uma imagem HTTPS por post; as exigências adicionais do Google continuam sujeitas à homologação.
 
@@ -162,7 +162,7 @@ Camada de suporte:
 - **Pré-checagem de mídia** (`scheduler/media.ts`): HTTPS público, formato identificável, vídeo onde só cabe imagem.
 - **Erros normalizados** em `retryable` — o que não pode ser corrigido por retentativa vai direto para a dead letter queue, com motivo legível.
 
-O contrato de resultados não usa ID gerado localmente como prova de publicação. Referência upstream conhecida impede republicação automática; jobs `processing` expirados não são retomados sem conferência do provedor. Reconciliação durável continua pendente. Meta usa Graph `v24.0` por padrão, alterável por configuração; não é uma declaração de versão mais recente.
+O contrato de resultados não usa ID gerado localmente como prova de publicação. Checkpoints tipados e tokens de execução protegem o limite de escrita. A reconciliação durável consulta a referência original com lease/backoff, sem outro create/upload/publish; resultado incerto sem referência segura exige revisão de owner/admin. Encerrar é decisão auditada, não prova de sucesso ou ausência, e não reenvia. Apenas tentativas comprovadamente anteriores ao envio/recusas explícitas seguem retry seguro. Consulte o [manual de recuperação](./docs/RECONCILIACAO_PUBLICACOES.md) antes de agir em um resultado incerto. Meta usa Graph `v24.0` por padrão, alterável por configuração; não é uma declaração de versão mais recente.
 
 Para desenvolvimento explicitamente simulado (nunca na produção deste portfólio):
 

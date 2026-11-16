@@ -46,6 +46,8 @@ async function postForm(
 ): Promise<Record<string, unknown>> {
   const res = await fetch(url, {
     method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(params).toString(),
   });

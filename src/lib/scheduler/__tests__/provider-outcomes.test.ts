@@ -44,10 +44,20 @@ describe("real publisher outcome parsing with mocked HTTP", () => {
     );
     await expect(publishLinkedIn(input("linkedin"))).rejects.toMatchObject({ retryable: false });
   });
-  it("LinkedIn accepts the exact provider-supplied x-restli-id", async () => {
+  it("LinkedIn accepts the exact provider-supplied x-restli-id only after a matching public read", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => response({}, 201, { "x-restli-id": "urn:li:share:123456789" })),
+      vi.fn(async (url: string | URL, init?: RequestInit) =>
+        init?.method === "POST"
+          ? response({}, 201, { "x-restli-id": "urn:li:share:123456789" })
+          : response({
+              id: "urn:li:share:123456789",
+              author: "urn:li:person:qa-person",
+              lifecycleState: "PUBLISHED",
+              visibility: "PUBLIC",
+              distribution: { feedDistribution: "MAIN_FEED" },
+            }),
+      ),
     );
     await expect(publishLinkedIn(input("linkedin"))).resolves.toEqual({
       externalPostId: "urn:li:share:123456789",

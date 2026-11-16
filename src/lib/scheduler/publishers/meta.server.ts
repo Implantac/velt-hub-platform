@@ -21,15 +21,22 @@
 
 import { metaGraphBase } from "@/lib/oauth/meta-version.server";
 import { composeCaption, detectMediaKind, isFetchableUrl, pickPrimaryMedia } from "../media";
-import type { PublishInput, PublishResult } from "../contracts";
+import { PublisherError, type PublishInput, type PublishResult } from "../contracts";
+import {
+  beforeProviderWrite,
+  preservePublicationReference,
+  publicationTarget,
+} from "../references";
+import { confirmPublication } from "./confirmation.server";
 
-export class MetaError extends Error {
-  readonly retryable: boolean;
+export class MetaError extends PublisherError {
   readonly code?: number;
-  constructor(message: string, opts: { retryable?: boolean; code?: number } = {}) {
-    super(message);
+  constructor(
+    message: string,
+    opts: { retryable?: boolean; code?: number; definiteRejection?: boolean } = {},
+  ) {
+    super(message, opts);
     this.name = "MetaError";
-    this.retryable = opts.retryable ?? true;
     this.code = opts.code;
   }
 }
@@ -47,9 +54,18 @@ async function graphFetch<T>(
   init: RequestInit & { query?: Record<string, string> } = {},
 ): Promise<T> {
   const url = new URL(`${metaGraphBase()}/${path.replace(/^\//, "")}`);
-  for (const [k, v] of Object.entries(init.query ?? {})) url.searchParams.set(k, v);
-
-  const res = await fetch(url, init);
+  const { query = {}, ...requestInit } = init;
+  for (const [key, value] of Object.entries(query))
+    if (key !== "access_token") url.searchParams.set(key, value);
+  const res = await fetch(url, {
+    ...requestInit,
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
+    headers: {
+      ...requestInit.headers,
+      ...(query.access_token ? { Authorization: `Bearer ${query.access_token}` } : {}),
+    },
+  });
   const text = await res.text();
   let json: unknown = null;
   try {
@@ -65,7 +81,11 @@ async function graphFetch<T>(
     const retryable =
       res.status < 500 &&
       (err?.is_transient === true || err?.code === 4 || err?.code === 17 || res.status === 429);
-    throw new MetaError(`Meta ${res.status}: ${msg}`, { retryable, code: err?.code });
+    throw new MetaError(`Meta ${res.status}: ${msg}`, {
+      retryable,
+      code: err?.code,
+      definiteRejection: [400, 401, 403, 429].includes(res.status),
+    });
   }
   return json as T;
 }
@@ -83,19 +103,6 @@ function resolvePageToken(channelConfig: Record<string, unknown>): string {
     );
   }
   return token;
-}
-
-function resolveIgUserId(channelConfig: Record<string, unknown>, externalId?: string): string {
-  const id =
-    (channelConfig.ig_user_id as string | undefined) ??
-    (channelConfig.igUserId as string | undefined) ??
-    externalId;
-  if (!id) {
-    throw new MetaError("Canal do Instagram sem ig_user_id — reconecte o canal.", {
-      retryable: false,
-    });
-  }
-  return id;
 }
 
 /* ------------------------------------------------------------------ */
@@ -119,7 +126,9 @@ async function pollContainer(containerId: string, token: string): Promise<void> 
         { retryable: false },
       );
     }
-    // IN_PROGRESS / PUBLISHED: keep waiting
+    if (status.status_code === "PUBLISHED")
+      throw new MetaError("Container já publicado; não repetir media_publish sem o ID da mídia.");
+    // IN_PROGRESS: keep waiting
     await new Promise((r) => setTimeout(r, CONTAINER_POLL_INTERVAL_MS));
   }
 
@@ -131,7 +140,7 @@ async function pollContainer(containerId: string, token: string): Promise<void> 
 
 export async function publishInstagram(input: PublishInput): Promise<PublishResult> {
   const token = resolvePageToken(input.channelConfig);
-  const igUserId = resolveIgUserId(input.channelConfig, input.channelConfig.external_id as string);
+  const igUserId = publicationTarget("instagram", input.channelConfig);
   const caption = composeCaption(input.payload.title, input.payload.body);
   const mediaUrls = (input.payload.media_urls ?? []).filter(isFetchableUrl);
   const primary = pickPrimaryMedia(mediaUrls);
@@ -156,27 +165,33 @@ export async function publishInstagram(input: PublishInput): Promise<PublishResu
     containerParams.image_url = primary.url;
   }
 
+  await beforeProviderWrite(input);
   const created = await graphFetch<{ id: string }>(`${igUserId}/media`, {
     method: "POST",
     query: containerParams,
   });
-  if (!created?.id) throw new MetaError("Instagram não retornou creation_id.", { retryable: true });
-
-  // Step 2 — wait for the container to be ready.
-  await pollContainer(created.id, token);
-
-  // Step 3 — publish.
-  const published = await graphFetch<{ id: string }>(`${igUserId}/media_publish`, {
-    method: "POST",
-    query: { creation_id: created.id, access_token: token },
-  });
-  if (!published?.id)
-    throw new MetaError(
-      "Instagram não retornou o id da publicação. Verifique o provedor antes de tentar novamente.",
-      { retryable: false },
+  if (!created?.id)
+    throw new MetaError("Instagram não retornou creation_id.", { retryable: false });
+  const container = { kind: "instagram_container" as const, id: created.id };
+  await preservePublicationReference(input, container);
+  try {
+    await pollContainer(created.id, token);
+    await beforeProviderWrite(input);
+    const published = await graphFetch<{ id: string }>(`${igUserId}/media_publish`, {
+      method: "POST",
+      query: { creation_id: created.id, access_token: token },
+    });
+    if (!published?.id) throw new MetaError("Instagram não retornou o ID da mídia publicada.");
+    const media = { kind: "instagram_media" as const, id: published.id };
+    await preservePublicationReference(input, media);
+    return await confirmPublication(input, media, token);
+  } catch (error) {
+    if (error instanceof PublisherError && error.reference) throw error;
+    throw new PublisherError(
+      error instanceof Error ? error.message : "Instagram não confirmou a publicação.",
+      { reference: container },
     );
-
-  return { externalPostId: published.id, raw: { container_id: created.id } };
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -185,12 +200,7 @@ export async function publishInstagram(input: PublishInput): Promise<PublishResu
 
 export async function publishFacebook(input: PublishInput): Promise<PublishResult> {
   const token = resolvePageToken(input.channelConfig);
-  const pageId =
-    (input.channelConfig.page_id as string | undefined) ??
-    (input.channelConfig.external_id as string);
-  if (!pageId) {
-    throw new MetaError("Canal do Facebook sem page_id — reconecte o canal.", { retryable: false });
-  }
+  const pageId = publicationTarget("facebook", input.channelConfig);
 
   const message = composeCaption(input.payload.title, input.payload.body);
   const mediaUrls = (input.payload.media_urls ?? []).filter(isFetchableUrl);
@@ -198,27 +208,49 @@ export async function publishFacebook(input: PublishInput): Promise<PublishResul
 
   // Photo posts carry the caption in the `caption` field, not `message`.
   if (primary && primary.kind === "image") {
+    await beforeProviderWrite(input);
     const photo = await graphFetch<{ id: string; post_id?: string }>(`${pageId}/photos`, {
       method: "POST",
       query: { url: primary.url, caption: message, access_token: token },
     });
-    return { externalPostId: photo.post_id ?? photo.id, raw: { photo_id: photo.id } };
+    if (photo?.post_id) {
+      const reference = { kind: "facebook_post" as const, id: photo.post_id };
+      await preservePublicationReference(input, reference);
+      return confirmPublication(input, reference, token);
+    }
+    if (photo?.id) {
+      const reference = { kind: "facebook_photo" as const, id: photo.id };
+      await preservePublicationReference(input, reference);
+      throw new PublisherError(
+        "Facebook retornou apenas o ID da foto, sem confirmar o post da Página.",
+        { reference },
+      );
+    }
+    throw new PublisherError(
+      "Facebook não retornou a referência da foto/post. Confira a Página antes de repetir.",
+    );
   }
 
   if (primary && primary.kind === "video") {
     // Feed videos are uploaded by URL; Meta fetches asynchronously.
+    await beforeProviderWrite(input);
     const video = await graphFetch<{ id: string }>(`${pageId}/videos`, {
       method: "POST",
       query: { file_url: primary.url, description: message, access_token: token },
     });
-    return { externalPostId: video.id, raw: { video_id: video.id } };
+    const reference = { kind: "facebook_video" as const, id: video?.id };
+    await preservePublicationReference(input, reference);
+    return confirmPublication(input, reference, token);
   }
 
+  await beforeProviderWrite(input);
   const post = await graphFetch<{ id: string }>(`${pageId}/feed`, {
     method: "POST",
     query: { message, access_token: token },
   });
-  return { externalPostId: post.id };
+  const reference = { kind: "facebook_post" as const, id: post?.id };
+  await preservePublicationReference(input, reference);
+  return confirmPublication(input, reference, token);
 }
 
 /** Utility used by tests and by the preflight panel's format hints. */
