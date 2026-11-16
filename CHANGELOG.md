@@ -1,5 +1,23 @@
 # Changelog
 
+## [Ciclo de credenciais OAuth — quinta rodada] — 2026-11-12
+
+### Autorização e renovação confiáveis
+
+- Tentativa single-use privada, vinculada a ator/workspace/provedor/marca/redirect/alvo/TTL, consumida antes do exchange. Callback repetido não faz outra troca; conclusão revalida papel, época e identidade. Reconexão preserva a mesma conta e marca.
+- Refresh com versão UUID, reserva/begin reconhecidos e commit CAS; um único POST entre workers, sem UPSERT tardio ou status conectado genérico. Disconnect/delete/reautorização vencem o worker antigo. Recibo UUID resolve commit sem reconhecimento; não repetir grant rotativo incerto.
+- Tokens/expiração/scope estritos, erros sem refletir segredo, redirects recusados, timeout e corpo limitado também em discovery. Falha analítica só invalida a versão usada; espera transitória mantém reconciliação pendente sem reenvio.
+- Primeiro vínculo de unidade Google Business agora persiste via RPC privilegiado/versionado após discovery/Voice of Merchant atual. Unidade estabelecida/histórico não são retargetáveis; enqueue direto exige vínculo confirmado.
+- UI PT/EN explica incerteza, reconexão, alcance da desconexão e erro de unidade sem sucesso falso. Cadastro manual continua sem OAuth.
+
+### Evidências e limites
+
+- Migration `20261116151953_oauth_credential_lifecycle` aplicada uma vez no Supabase VELT, 29 entradas; hash local/remoto conferido. 133 novos checks reais com rollback, ACLs e fingerprints preservados.
+- Typecheck/lint/build Vercel Node 22, 1.138 testes/66 arquivos, audit de produção sem vulnerabilidades reportadas; 336/336 checks PGlite em oito suítes.
+- Runtime compilado com Auth/PostgREST/RLS reais: 25 checks/12 interleavings; três rodadas adicionais de claims simultâneos em processos OS independentes. Provider HTTP sintético somente no harness externo, nunca no app implantado.
+- Navegador: 12 checks e 12 análises Axe sem violações detectadas; persistência real, falhas injetadas, 320/390/1440 px, idiomas e SSR público separado da recarga CSR privada. Fixtures removidas, nenhum job executável ou conexão/publicação externa real.
+- Main-only/CI paralelo preservados; push/CI/deploy/smoke são evidência operacional separada. Homologação externa e liberação para clientes continuam pendentes. Consulte `docs/QA_OAUTH_RODADA_5.md` e `docs/CICLO_CREDENCIAIS_OAUTH.md`.
+
 ## [Reconciliação de publicação — quarta rodada] — 2026-11-12
 
 ### Entrega conservadora e recuperação

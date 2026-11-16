@@ -1,190 +1,291 @@
 /**
- * VELT — OAuth token refresh (server-only).
- *
- * Real publishing fails for one boring reason far more often than any other:
- * the access token expired before the scheduled job ran. A post scheduled three
- * weeks out will almost never have a valid token at execution time. The
- * dispatcher therefore refreshes proactively, inside the job, before calling the
- * platform — never assuming the token captured at connect time is still good.
- *
- * Refresh strategies differ per provider:
- *   - Google (YouTube)  : standard OAuth2 refresh_token grant
- *   - LinkedIn          : standard OAuth2 refresh_token grant
- *   - TikTok            : refresh_token grant, rotates the refresh token
- *   - Meta              : stored Page grants require explicit reauthorization at expiry
+ * Server-only credential lifecycle. No in-memory lock and no credential UPSERT.
+ * The database lease works across workers; begin is acknowledged before POST.
+ * A rotated grant is never blindly retried after a timeout or lost response.
  */
-
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { getToken, saveToken } from "./store.server";
+import {
+  getToken,
+  invalidateTokenVersion,
+  type OAuthPlatform,
+  type StoredToken,
+} from "./store.server";
+import { encryptToken } from "./crypto.server";
+import { OAuthCredentialError } from "./errors.server";
+import {
+  parseOAuthTokens,
+  readOAuthJson,
+  record,
+  validToken,
+  type ParsedOAuthTokens,
+} from "./token-response.server";
 
-/** Refresh when the token expires within this window. */
 const EXPIRY_SKEW_MS = 5 * 60_000;
-
-export interface RefreshContext {
-  platform: string;
-  accessToken: string;
-  refreshToken?: string | null;
-  expiresAt?: string | null;
-}
-
+const supported = new Set([
+  "youtube",
+  "google_business",
+  "linkedin",
+  "tiktok",
+  "facebook",
+  "instagram",
+]);
 export function needsRefresh(expiresAt?: string | null, now = Date.now()): boolean {
-  if (!expiresAt) return false; // unknown expiry: try the token as-is
-  const t = new Date(expiresAt).getTime();
-  if (Number.isNaN(t)) return false;
-  return t - EXPIRY_SKEW_MS <= now;
+  if (expiresAt == null) return false; // e.g. a Page grant with no stated lifetime
+  const time = Date.parse(expiresAt);
+  return !Number.isFinite(time) || time - EXPIRY_SKEW_MS <= now;
 }
-
-interface RefreshResult {
-  accessToken: string;
-  refreshToken?: string | null;
-  expiresAt?: string | null;
-}
-
-async function postForm(
-  url: string,
-  params: Record<string, string>,
-): Promise<Record<string, unknown>> {
-  const res = await fetch(url, {
-    method: "POST",
-    redirect: "error",
-    signal: AbortSignal.timeout(20_000),
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(params).toString(),
-  });
-  const text = await res.text();
-  if (!res.ok)
-    throw new Error(
-      `refresh failed ${res.status}${res.status === 400 || res.status === 401 ? " — reconecte o canal" : ""}`,
-    );
-  try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    throw new Error("refresh returned invalid JSON");
-  }
-}
-
-function isoFromSeconds(sec: unknown): string | undefined {
-  const n = Number(sec);
-  if (!n || Number.isNaN(n)) return undefined;
-  return new Date(Date.now() + n * 1000).toISOString();
-}
-
-/** Google-family (YouTube) refresh. */
-async function refreshGoogle(refreshToken: string): Promise<RefreshResult> {
-  const json = await postForm("https://oauth2.googleapis.com/token", {
-    client_id: process.env.GOOGLE_CLIENT_ID ?? "",
-    client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-    refresh_token: refreshToken,
-    grant_type: "refresh_token",
-  });
-  return {
-    accessToken: String(json.access_token),
-    refreshToken,
-    expiresAt: isoFromSeconds(json.expires_in),
-  };
-}
-
-/** LinkedIn refresh. */
-async function refreshLinkedIn(refreshToken: string): Promise<RefreshResult> {
-  const json = await postForm("https://www.linkedin.com/oauth/v2/accessToken", {
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    client_id: process.env.LINKEDIN_CLIENT_ID ?? "",
-    client_secret: process.env.LINKEDIN_CLIENT_SECRET ?? "",
-  });
-  return {
-    accessToken: String(json.access_token),
-    refreshToken: (json.refresh_token as string) ?? refreshToken,
-    expiresAt: isoFromSeconds(json.expires_in),
-  };
-}
-
-/** TikTok refresh (rotates the refresh token — must be persisted). */
-async function refreshTikTok(refreshToken: string): Promise<RefreshResult> {
-  const json = await postForm("https://open.tiktokapis.com/v2/oauth/token/", {
-    client_key: process.env.TIKTOK_CLIENT_KEY ?? "",
-    client_secret: process.env.TIKTOK_CLIENT_SECRET ?? "",
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-  });
-  const data = (json.data as Record<string, unknown> | undefined) ?? json;
-  return {
-    accessToken: String(data.access_token),
-    refreshToken: (data.refresh_token as string) ?? refreshToken,
-    expiresAt: isoFromSeconds(data.expires_in),
-  };
-}
-
-const REFRESHERS: Record<string, (rt: string) => Promise<RefreshResult>> = {
-  youtube: refreshGoogle,
-  google_business: refreshGoogle,
-  linkedin: refreshLinkedIn,
-  tiktok: refreshTikTok,
-};
-
-/**
- * Returns a usable access token for a channel, refreshing and persisting when
- * the current one is expired or about to expire.
- *
- * Throws a non-retryable-shaped error when the channel was never connected or
- * the refresh token is gone — retrying cannot fix those.
- */
-export async function getFreshToken(
-  channelId: string,
-  platform: string,
-): Promise<{
+export interface FreshToken {
   accessToken: string;
   refreshed: boolean;
-}> {
-  const stored = await getToken(channelId);
-  if (!stored) {
-    throw new Error("canal sem token OAuth — reconecte o canal antes de publicar");
+  version: string;
+}
+type RefreshOutcome =
+  "not_sent" | "throttled" | "rejected" | "uncertain" | "invalid_grant" | "invalid_response";
+class GrantError extends Error {
+  constructor(public readonly outcome: RefreshOutcome) {
+    super("OAuth refresh was not confirmed");
   }
-
-  if (
-    !stored.accessToken?.trim() ||
-    stored.accessToken === "undefined" ||
-    (stored.expiresAt && !Number.isFinite(Date.parse(stored.expiresAt)))
-  )
-    throw new Error("Token ou validade inválida — reconecte o canal.");
-  const refresher = REFRESHERS[platform];
-  const expired = needsRefresh(stored.expiresAt);
-  const hasRefreshToken = Boolean(stored.refreshToken);
-
-  // Stored Meta credentials are Page tokens, not user tokens for fb_exchange_token.
-  // Never pretend that an expired Page grant can always be extended. Reauthorization is explicit.
-  const canRefresh = Boolean(refresher) && hasRefreshToken;
-
-  if (!expired && !hasExpiringSoon(stored.expiresAt)) {
-    return { accessToken: stored.accessToken, refreshed: false };
-  }
-  if (!canRefresh) throw new Error("Token expirado sem renovação disponível — reconecte o canal.");
-
-  const result = await refresher(
-    hasRefreshToken ? String(stored.refreshToken) : stored.accessToken,
-  );
-
-  if (!result.accessToken?.trim() || result.accessToken === "undefined")
-    throw new Error("Renovação sem token válido — reconecte o canal.");
-
-  await saveToken(channelId, {
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken ?? stored.refreshToken ?? null,
-    tokenType: stored.tokenType ?? "Bearer",
-    scope: stored.scope ?? null,
-    expiresAt: result.expiresAt ?? null,
-  });
-
-  const { error: statusError } = await supabaseAdmin
-    .from("channels")
-    .update({ status: "connected" })
-    .eq("id", channelId);
-  if (statusError)
-    throw new Error("Não foi possível confirmar o estado do canal após a renovação.");
-
-  return { accessToken: result.accessToken, refreshed: true };
 }
 
-function hasExpiringSoon(expiresAt?: string | null): boolean {
-  return needsRefresh(expiresAt);
+function refreshRequest(platform: string, refreshToken: string) {
+  const google = platform === "youtube" || platform === "google_business";
+  const prefix = google ? "GOOGLE" : platform === "linkedin" ? "LINKEDIN" : "TIKTOK";
+  const clientId = process.env[prefix + (platform === "tiktok" ? "_CLIENT_KEY" : "_CLIENT_ID")];
+  const clientSecret = process.env[prefix + "_CLIENT_SECRET"];
+  if (!clientId?.trim() || !clientSecret?.trim())
+    throw new OAuthCredentialError("provider_configuration", true);
+  return {
+    url: google
+      ? "https://oauth2.googleapis.com/token"
+      : platform === "linkedin"
+        ? "https://www.linkedin.com/oauth/v2/accessToken"
+        : "https://open.tiktokapis.com/v2/oauth/token/",
+    body: new URLSearchParams({
+      [platform === "tiktok" ? "client_key" : "client_id"]: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  };
+}
+function providerFailure(json: Record<string, unknown>): RefreshOutcome | null {
+  if (!json.error && !json.error_description) return null;
+  // A contradictory body is not proof that a rotating grant was refused.
+  if (json.access_token || json.refresh_token || json.data) return "invalid_response";
+  const code = typeof json.error === "string" ? json.error : "";
+  if (["invalid_grant", "access_denied"].includes(code)) return "invalid_grant";
+  if (
+    [
+      "invalid_client",
+      "unauthorized_client",
+      "invalid_scope",
+      "unsupported_grant_type",
+      "invalid_request",
+    ].includes(code)
+  )
+    return "rejected";
+  return "uncertain";
+}
+async function sendRefresh(
+  request: ReturnType<typeof refreshRequest>,
+  platform: string,
+): Promise<ParsedOAuthTokens> {
+  let response: Response;
+  try {
+    response = await fetch(request.url, {
+      method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(20_000),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: request.body.toString(),
+    });
+  } catch {
+    throw new GrantError("uncertain");
+  }
+  if (response.status === 429) {
+    await response.body?.cancel().catch(() => {});
+    throw new GrantError("throttled");
+  }
+  if (response.status >= 500) {
+    await response.body?.cancel().catch(() => {});
+    throw new GrantError("uncertain");
+  }
+  let json;
+  try {
+    json = record(await readOAuthJson(response));
+  } catch {
+    throw new GrantError(response.ok ? "invalid_response" : "uncertain");
+  }
+  const failure = providerFailure(json);
+  if (failure) throw new GrantError(failure);
+  if (!response.ok) throw new GrantError("uncertain");
+  try {
+    return parseOAuthTokens(json.data === undefined ? json : record(json.data), {
+      expiryRequired: true,
+      refreshRequired: platform === "tiktok",
+    });
+  } catch {
+    throw new GrantError("invalid_response");
+  }
+}
+async function release(
+  channelId: string,
+  version: string,
+  lease: string,
+  outcome: RefreshOutcome,
+): Promise<void> {
+  try {
+    await supabaseAdmin.rpc("fail_oauth_token_refresh", {
+      _channel_id: channelId,
+      _expected_version: version,
+      _lease: lease,
+      _outcome: outcome,
+    });
+  } catch {
+    // No second grant. An abandoned begun lease becomes uncertain at expiry.
+  }
+}
+const claimSchema = z.discriminatedUnion("state", [
+  z.object({
+    state: z.literal("claimed"),
+    channel_id: z.string().uuid(),
+    token_version: z.string().uuid(),
+    lease: z.string().uuid(),
+  }),
+  z.object({ state: z.enum(["disconnected", "changed", "busy", "cooldown", "reconnect"]) }),
+]);
+
+async function commitRefresh(
+  channelId: string,
+  platform: OAuthPlatform,
+  stored: StoredToken,
+  lease: string,
+  result: ParsedOAuthTokens,
+): Promise<FreshToken> {
+  const newVersion = randomUUID();
+  let args;
+  try {
+    args = {
+      _channel_id: channelId,
+      _expected_version: stored.version,
+      _lease: lease,
+      _new_version: newVersion,
+      _access_ciphertext: encryptToken(result.accessToken),
+      _refresh_ciphertext: encryptToken(result.refreshToken ?? stored.refreshToken!),
+      _expires_at: result.expiresAt!,
+      _scope: result.scope ?? stored.scope,
+      _token_type: result.tokenType ?? stored.tokenType ?? "Bearer",
+    };
+  } catch {
+    await release(channelId, stored.version, lease, "uncertain");
+    throw new OAuthCredentialError("refresh_uncertain", false);
+  }
+  // Retrying this CAS once is safe. Retrying the provider's rotating grant is NOT.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let acknowledged = false;
+    try {
+      const { data, error } = await supabaseAdmin.rpc("complete_oauth_token_refresh", args);
+      acknowledged = !error && data === true;
+    } catch {
+      // The known new version is the receipt used to resolve a lost acknowledgement.
+    }
+    let current;
+    try {
+      current = await getToken(channelId, platform);
+    } catch {
+      if (acknowledged) throw new OAuthCredentialError("store_unavailable", true);
+      await release(channelId, stored.version, lease, "uncertain");
+      throw new OAuthCredentialError("refresh_uncertain", false);
+    }
+    if (!current) throw new OAuthCredentialError("disconnected", false);
+    if (
+      current.version === newVersion &&
+      current.accessToken === result.accessToken &&
+      !current.refreshUncertain
+    )
+      return { accessToken: current.accessToken, version: newVersion, refreshed: true };
+    if (current.version !== stored.version)
+      throw new OAuthCredentialError("credential_changed", true);
+    if (current.refreshLease !== lease || current.refreshUncertain) break;
+  }
+  await release(channelId, stored.version, lease, "uncertain");
+  throw new OAuthCredentialError("refresh_uncertain", false);
+}
+
+export async function getFreshToken(channelId: string, platformName: string): Promise<FreshToken> {
+  if (!supported.has(platformName)) throw new OAuthCredentialError("disconnected", false);
+  const platform = platformName as OAuthPlatform;
+  for (let read = 0; read < 2; read++) {
+    const stored = await getToken(channelId, platform);
+    if (!stored) throw new OAuthCredentialError("disconnected", false);
+    if (
+      !validToken(stored.accessToken) ||
+      (stored.expiresAt !== null && !Number.isFinite(Date.parse(stored.expiresAt)))
+    ) {
+      await invalidateTokenVersion(channelId, stored.version, "invalid_token");
+      throw new OAuthCredentialError("invalid_token", false);
+    }
+    if (stored.refreshUncertain) throw new OAuthCredentialError("refresh_uncertain", false);
+    const canRefresh = ["youtube", "google_business", "linkedin", "tiktok"].includes(platform);
+    const expiresUnknown = stored.expiresAt === null && canRefresh;
+    if (!expiresUnknown && !needsRefresh(stored.expiresAt) && !stored.refreshStartedAt)
+      return { accessToken: stored.accessToken, refreshed: false, version: stored.version };
+    if (!canRefresh || !validToken(stored.refreshToken)) {
+      await invalidateTokenVersion(channelId, stored.version, "missing_refresh");
+      throw new OAuthCredentialError("missing_refresh", false);
+    }
+    // Configuration errors are known before reserving/beginning any external grant.
+    const request = refreshRequest(platform, stored.refreshToken);
+    let claim;
+    try {
+      const { data, error } = await supabaseAdmin.rpc("claim_oauth_token_refresh", {
+        _channel_id: channelId,
+        _platform: platform,
+        _expected_version: stored.version,
+      });
+      if (error) throw new Error("claim not confirmed");
+      claim = claimSchema.parse(data);
+    } catch {
+      throw new OAuthCredentialError("store_unavailable", true);
+    }
+    if (claim.state === "changed") continue;
+    if (claim.state === "busy") throw new OAuthCredentialError("refresh_busy", true);
+    if (claim.state === "cooldown") throw new OAuthCredentialError("refresh_cooldown", true);
+    if (claim.state === "disconnected") throw new OAuthCredentialError("disconnected", false);
+    if (claim.state === "reconnect") throw new OAuthCredentialError("refresh_uncertain", false);
+    if (claim.state !== "claimed") throw new OAuthCredentialError("store_unavailable", true);
+    if (claim.channel_id !== channelId || claim.token_version !== stored.version)
+      throw new OAuthCredentialError("store_unavailable", true);
+    let begun = false;
+    try {
+      const { data, error } = await supabaseAdmin.rpc("begin_oauth_token_refresh", {
+        _channel_id: channelId,
+        _expected_version: stored.version,
+        _lease: claim.lease,
+      });
+      begun = !error && data === true;
+    } catch {
+      // No acknowledged begin means NO POST, even if the database actually began.
+    }
+    if (!begun) {
+      await release(channelId, stored.version, claim.lease, "not_sent");
+      throw new OAuthCredentialError("credential_changed", true);
+    }
+    let result;
+    try {
+      result = await sendRefresh(request, platform);
+    } catch (error) {
+      const outcome = error instanceof GrantError ? error.outcome : "uncertain";
+      await release(channelId, stored.version, claim.lease, outcome);
+      if (outcome === "throttled") throw new OAuthCredentialError("refresh_cooldown", true);
+      if (outcome === "rejected") throw new OAuthCredentialError("provider_configuration", true);
+      if (outcome === "invalid_grant") throw new OAuthCredentialError("invalid_grant", false);
+      if (outcome === "invalid_response") throw new OAuthCredentialError("invalid_token", false);
+      throw new OAuthCredentialError("refresh_uncertain", false);
+    }
+    return commitRefresh(channelId, platform, stored, claim.lease, result);
+  }
+  throw new OAuthCredentialError("credential_changed", true);
 }

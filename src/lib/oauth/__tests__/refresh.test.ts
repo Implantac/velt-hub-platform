@@ -18,7 +18,7 @@ describe("needsRefresh", () => {
     expect(needsRefresh(new Date(now + 60 * 60_000).toISOString(), now)).toBe(false);
   });
 
-  it("ignores malformed expiry instead of crashing the dispatch", () => {
-    expect(needsRefresh("not-a-date", now)).toBe(false);
+  it("treats malformed expiry as requiring validation, not as a never-expiring credential", () => {
+    expect(needsRefresh("not-a-date", now)).toBe(true);
   });
 });

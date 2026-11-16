@@ -508,12 +508,35 @@
     "oauthErrors": {
       "provider_denied": "Authorization was cancelled at the provider.",
       "connection_failed": "The connection could not be confirmed. Start authorization again.",
-      "account_selection_required": "The provider returned several accounts. To avoid publishing to the wrong one, authorize only the intended account and try again.",
+      "account_selection_required": "The provider returned several accounts. Use “Reconnect the same account” on an existing channel or authorize only the intended account. No account is chosen automatically.",
       "no_eligible_account": "The provider returned no eligible publishing account. Check the account type and granted permissions.",
-      "provider_unavailable": "The provider did not allow account or location discovery. Check application APIs and permissions, then try again."
+      "provider_unavailable": "The provider did not allow account or location discovery. Check application APIs and permissions, then try again.",
+      "authorization_used": "This authorization was already used, cancelled or expired. Start a new one in Channels."
     },
-    "confirmDisconnect": "Disconnect this channel and remove saved credentials? Pending posts cannot publish while it is disconnected.",
-    "confirmDelete": "Delete this channel and its associated history? Cancel pending schedules first. This does not remove posts already made on the provider."
+    "confirmDisconnect": "Remove saved credentials and cancel in-progress authorizations for this platform in the workspace? Scheduled posts cannot publish while the channel is disconnected. This does not revoke permissions at the provider or cancel a request already sent.",
+    "confirmDelete": "Delete this channel and its associated history? Cancel pending schedules first. This does not remove posts already made on the provider.",
+    "reconnect": "Reconnect the same account",
+    "authorizationIssues": {
+      "refresh_uncertain": "The refresh outcome is uncertain. We will not repeat it automatically because the provider may have rotated the token. Reconnect the same account to continue.",
+      "invalid_grant": "The provider rejected the saved authorization. Reconnect the same account to continue.",
+      "missing_refresh": "This credential expired and cannot refresh automatically. Reconnect the same account to continue.",
+      "invalid_token": "The credential or its expiration could not be validated. Reconnect the same account to continue.",
+      "provider_unauthorized": "The provider rejected the credential used to collect metrics. Reconnect the same account and check permissions."
+    },
+    "location": {
+      "loading": "Looking up Google locations…",
+      "errorTitle": "Locations could not be listed.",
+      "errorDescription": "Refresh the channel and check authorization, Google Business APIs and application permissions. No binding has been confirmed.",
+      "retry": "Try again",
+      "empty": "No locations found in this Google account. Create or verify a Google Business Profile location before publishing.",
+      "title": "Location that receives posts",
+      "boundNotice": "This channel stays bound to the chosen location. Start a separate connection for a different location; history and scheduled posts will not be transferred.",
+      "current": "Bound location",
+      "unverified": "No current management authorization (Voice of Merchant) — publishing blocked.",
+      "saving": "Saving…",
+      "saved": "Location bound: {{name}}",
+      "saveFailed": "The binding was not confirmed. Refresh the locations and try again. An established location cannot be changed."
+    }
   },
   "brands": {
     "title": "Brands",

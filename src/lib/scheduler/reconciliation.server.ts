@@ -1,6 +1,7 @@
 /** Durable recovery and read-only checks, never a second publish/upload. */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Database } from "@/integrations/supabase/types";
+import { OAuthCredentialError } from "@/lib/oauth/errors.server";
 import { getFreshToken } from "@/lib/oauth/refresh.server";
 import { observePublication, type PublicationObservation } from "./observe.server";
 import {
@@ -94,7 +95,15 @@ async function inspect(
   let accessToken: string;
   try {
     accessToken = (await getFreshToken(channel.id, channel.platform)).accessToken;
-  } catch {
+  } catch (error) {
+    if (error instanceof OAuthCredentialError && error.retryable)
+      return {
+        outcome: {
+          state: "pending",
+          note: "A autorização de leitura está temporariamente indisponível. A consulta será retomada sem reenviar a publicação.",
+        },
+        queriedProvider: false,
+      };
     return noQuery(
       "Não foi possível obter autorização de leitura. Reconecte a mesma conta antes de verificar; não reenviar.",
     );

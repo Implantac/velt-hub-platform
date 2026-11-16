@@ -10,6 +10,7 @@ const StateSchema = z
     userId: z.string().uuid(),
     provider: z.string().regex(/^[a-z0-9_-]{2,40}$/),
     brandId: z.string().uuid().nullish(),
+    channelId: z.string().uuid().nullish(),
     redirectUri: z.string().url(),
     nonce: z.string().regex(/^[a-f0-9]{32}$/),
     exp: z.number().int().positive(),

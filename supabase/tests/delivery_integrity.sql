@@ -31,9 +31,16 @@ begin
 end $$;
 create function pg_temp.ok(_value boolean) returns boolean language plpgsql as $$
 begin if _value is distinct from true then raise exception 'assertion failed';end if;return true;end $$;
-create function pg_temp.oauth(_actor uuid,_brand uuid default null,_external text default 'qa_external',_cipher text default 'QA_INVALID_UNUSED_NEVER_SENT',_metadata jsonb default '{}') returns public.channels language sql as $$
-  select public.complete_oauth_connection((select ws from qa_d),_actor,_brand,'facebook',_external,'QA Synthetic',_metadata,_cipher,null,'Bearer',null,null);
-$$;
+create function pg_temp.oauth(_actor uuid,_brand uuid default null,_external text default 'qa_external',_cipher text default 'QA_INVALID_UNUSED_NEVER_SENT',_metadata jsonb default '{}') returns public.channels language plpgsql as $$
+declare attempt_id uuid; intent public.oauth_authorization_attempts; digest text:=replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''); claims text:=current_setting('request.jwt.claims',true); result public.channels;
+begin
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',_actor,'role','authenticated')::text,true);
+  attempt_id:=public.register_oauth_authorization((select ws from qa_d),'facebook','facebook',_brand,digest,'https://qa.example.invalid/api/public/oauth/callback/facebook',clock_timestamp()+interval '9 minutes');
+  intent:=public.consume_oauth_authorization(digest,(select ws from qa_d),_actor,'facebook',_brand,'https://qa.example.invalid/api/public/oauth/callback/facebook');
+  result:=public.complete_oauth_authorization(attempt_id,intent.exchange_token,_external,'QA Synthetic',_metadata,_cipher,null,'Bearer',null,null);
+  perform set_config('request.jwt.claims',coalesce(claims,''),true);
+  return result;
+end $$;
 create function pg_temp.verify_oauth() returns boolean language plpgsql as $$
 declare ch public.channels;ch2 public.channels;f record;
 begin
@@ -43,7 +50,7 @@ begin
   perform pg_temp.ok((select count(*)=1 from public.domain_events where workspace_id=f.ws and event_type='channel.connected' and payload->>'channel_id'=ch.id::text));
   update public.oauth_tokens set refresh_token_ciphertext='QA_REFRESH_INVALID_UNUSED' where channel_id=ch.id;
   ch2:=pg_temp.oauth(f.owner_id);perform pg_temp.ok(ch2.id=ch.id);
-  perform pg_temp.ok((select refresh_token_ciphertext='QA_REFRESH_INVALID_UNUSED' from public.oauth_tokens where channel_id=ch.id));
+  perform pg_temp.ok((select refresh_token_ciphertext is null from public.oauth_tokens where channel_id=ch.id));
   return true;
 end $$;
 create function pg_temp.verify_click(_published boolean,_active boolean) returns boolean language plpgsql as $$
@@ -101,7 +108,7 @@ select pg_temp.probe('oauth_missing_ciphertext','select pg_temp.oauth(owner_id,n
 select pg_temp.probe('oauth_invalid_metadata','select pg_temp.oauth(owner_id,null,''qa_external'',''QA_INVALID_UNUSED_NEVER_SENT'',''[]'') from qa_d','23514');
 set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
-select pg_temp.probe('service_oauth_completion','select pg_temp.verify_oauth()','00000',1);
+select pg_temp.probe('legacy_service_oauth_completion_fails_closed','select public.complete_oauth_connection(ws,owner_id,null,''facebook'',''qa_legacy'',null,''{}'',''QA_INVALID_UNUSED_NEVER_SENT'',null,null,null,null) from qa_d','40001');
 select pg_temp.probe('service_plan_change_authorized','update public.workspaces set plan=''pro'' where id=(select ws from qa_d)','00000',1);
 set local role anon;
 select pg_temp.probe('anon_complete_oauth_blocked','select pg_temp.oauth(owner_id) from qa_d','42501');

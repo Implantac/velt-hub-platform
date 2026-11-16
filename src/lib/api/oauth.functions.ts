@@ -5,6 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getProvider, listProviders } from "@/lib/oauth/providers.server";
 import {
   signState,
+  verifyState,
   stateCookieName,
   stateCookieValue,
   STATE_COOKIE_PATH,
@@ -31,7 +32,20 @@ import { WORKSPACE_MANAGE_ROLES } from "@/lib/workspace/permissions";
  */
 function buildCallbackUri(provider: string): string {
   const configured = process.env.APP_ORIGIN?.replace(/\/$/, "");
-  if (configured) return `${configured}/api/public/oauth/callback/${provider}`;
+  if (configured) {
+    const origin = new URL(configured);
+    if (
+      !["https:", "http:"].includes(origin.protocol) ||
+      origin.username ||
+      origin.password ||
+      origin.pathname !== "/" ||
+      origin.search ||
+      origin.hash ||
+      (process.env.NODE_ENV === "production" && origin.protocol !== "https:")
+    )
+      throw new Error("APP_ORIGIN must be a trusted origin (HTTPS in production)");
+    return `${origin.origin}/api/public/oauth/callback/${provider}`;
+  }
 
   const env = process.env.NODE_ENV ?? "development";
   if (env === "production") {
@@ -60,6 +74,7 @@ export const startOAuthConnect = createServerFn({ method: "POST" })
           .max(40)
           .regex(/^[a-z0-9_-]+$/),
         brandId: z.string().uuid().optional(),
+        channelId: z.string().uuid().optional(),
       })
       .parse(input),
   )
@@ -70,15 +85,43 @@ export const startOAuthConnect = createServerFn({ method: "POST" })
     await assertBrandInWorkspace(supabase, data.workspaceId, data.brandId);
 
     const provider = getProvider(data.provider);
+    let brandId = data.brandId ?? null;
+    if (data.channelId) {
+      const { data: target, error: targetError } = await supabase
+        .from("channels")
+        .select("id,platform,external_id,brand_id")
+        .eq("id", data.channelId)
+        .eq("workspace_id", data.workspaceId)
+        .maybeSingle();
+      throwIfError(targetError);
+      if (!target?.external_id || target.platform !== provider.platform)
+        throw new Error("A reconexão exige o mesmo canal e plataforma neste workspace.");
+      brandId = data.brandId ?? target.brand_id;
+      await assertBrandInWorkspace(supabase, data.workspaceId, brandId ?? undefined);
+    }
     const redirectUri = buildCallbackUri(data.provider);
     const state = signState({
       workspaceId: data.workspaceId,
       userId,
       provider: data.provider,
-      brandId: data.brandId ?? null,
+      brandId,
+      channelId: data.channelId ?? null,
       redirectUri,
     });
     const url = provider.authUrl({ state, redirectUri });
+    const { data: attemptId, error } = await supabase.rpc("register_oauth_authorization", {
+      _workspace_id: data.workspaceId,
+      _provider: data.provider,
+      _platform: provider.platform,
+      _brand_id: brandId,
+      _channel_id: data.channelId ?? null,
+      _state_hash: stateCookieValue(state),
+      _redirect_uri: redirectUri,
+      _expires_at: new Date(verifyState(state).exp * 1000).toISOString(),
+    });
+    throwIfError(error);
+    if (!z.string().uuid().safeParse(attemptId).success)
+      throw new Error("Não foi possível registrar esta autorização. Inicie novamente em Canais.");
     setCookie(stateCookieName(data.provider), stateCookieValue(state), {
       httpOnly: true,
       secure: new URL(redirectUri).protocol === "https:",

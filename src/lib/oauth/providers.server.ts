@@ -1,46 +1,36 @@
-/**
- * OAuth provider registry. Each provider knows how to:
- *  - build an authorize URL (with state + redirect_uri)
- *  - exchange an authorization code for tokens
- *
- * Secrets are read lazily from process.env so missing providers produce a
- * clear error only when actually invoked.
- */
-
+/** OAuth discovery is real; validation, timeouts and redirects fail closed. */
+import { z } from "zod";
 import { metaGraphBase, metaGraphVersion } from "./meta-version.server";
 import type { Database } from "@/integrations/supabase/types";
+import { parseOAuthTokens, readOAuthJson, record, validToken } from "./token-response.server";
 
 export interface ProviderTokens {
   accessToken: string;
   refreshToken?: string;
   tokenType?: string;
   scope?: string;
-  /** ISO-8601 string */
   expiresAt?: string;
-  /** Provider-specific external account/page id to persist on channels.external_id */
   externalAccountId?: string;
   externalHandle?: string;
-  /** Safe resource identifiers only; tokens are stored separately and encrypted. */
+  /** Resource identifiers only. Credentials never go in public metadata. */
   metadata?: Record<string, string | boolean | null>;
 }
-
+interface ExchangeArgs {
+  code: string;
+  redirectUri: string;
+  /** A reconnect must authorize the same previously chosen account/unit. */
+  targetExternalId?: string;
+}
 export interface Provider {
   platform: Database["public"]["Enums"]["social_platform"];
   authUrl(args: { state: string; redirectUri: string }): string;
-  exchange(args: { code: string; redirectUri: string }): Promise<ProviderTokens>;
+  exchange(args: ExchangeArgs): Promise<ProviderTokens>;
 }
-
 function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`${name} is not configured`);
-  return v;
+  const value = process.env[name];
+  if (!value?.trim()) throw new Error(`${name} is not configured`);
+  return value;
 }
-
-function expiresInToIso(seconds: number | undefined): string | undefined {
-  if (!seconds || Number.isNaN(seconds)) return undefined;
-  return new Date(Date.now() + seconds * 1000).toISOString();
-}
-
 export class ProviderConnectionError extends Error {
   constructor(
     public readonly code:
@@ -50,74 +40,175 @@ export class ProviderConnectionError extends Error {
     this.name = "ProviderConnectionError";
   }
 }
-async function authorizedJson<T>(url: string | URL, accessToken: string): Promise<T> {
-  if (!accessToken) throw new ProviderConnectionError("no_eligible_account");
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!response.ok) throw new ProviderConnectionError("provider_unavailable");
-  return response.json() as Promise<T>;
+function parse<T extends z.ZodType>(schema: T, value: unknown): z.output<T> {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) throw new ProviderConnectionError("provider_unavailable");
+  return parsed.data;
 }
-/** Never guess between Pages. Page tokens are encrypted in oauth_tokens, never put in channel metadata. */
+const id = z
+  .string()
+  .min(1)
+  .max(300)
+  .regex(/^[^\s\p{Cc}]+$/u);
+const label = z
+  .string()
+  .max(500)
+  .refine((value) => !/\p{Cc}/u.test(value));
+const pageTokenSchema = z
+  .string()
+  .min(1)
+  .max(2048)
+  .refine((value) => !/\p{Cc}/u.test(value));
+async function authorizedJson<T extends z.ZodType>(
+  schema: T,
+  url: string | URL,
+  accessToken: string,
+  deadline?: AbortSignal,
+): Promise<z.output<T>> {
+  if (!validToken(accessToken)) throw new ProviderConnectionError("provider_unavailable");
+  const response = await fetch(url, {
+    redirect: "error",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: deadline
+      ? AbortSignal.any([deadline, AbortSignal.timeout(15_000)])
+      : AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new ProviderConnectionError("provider_unavailable");
+  }
+  // Discovery pages can exceed a token response, but must remain bounded too.
+  const json = record(await readOAuthJson(response, 1_048_576));
+  if (json.error) throw new ProviderConnectionError("provider_unavailable");
+  return parse(schema, json);
+}
+async function exchangeJson(
+  url: string | URL,
+  body?: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
+    ...(body
+      ? { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body }
+      : {}),
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new ProviderConnectionError("provider_unavailable");
+  }
+  return record(await readOAuthJson(response));
+}
+function googleAuthUrl(scope: string, state: string, redirectUri: string): string {
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.search = new URLSearchParams({
+    client_id: requireEnv("GOOGLE_CLIENT_ID"),
+    redirect_uri: redirectUri,
+    response_type: "code",
+    access_type: "offline",
+    prompt: "consent",
+    state,
+    scope,
+  }).toString();
+  return url.href;
+}
+async function googleExchange({ code, redirectUri }: ExchangeArgs) {
+  const json = await exchangeJson(
+    "https://oauth2.googleapis.com/token",
+    new URLSearchParams({
+      code,
+      client_id: requireEnv("GOOGLE_CLIENT_ID"),
+      client_secret: requireEnv("GOOGLE_CLIENT_SECRET"),
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+    }),
+  );
+  return parseOAuthTokens(json, { expiryRequired: true });
+}
+
 function metaProvider(platform: "facebook" | "instagram"): Provider {
   return {
     platform,
     authUrl({ state, redirectUri }) {
       const url = new URL(`https://www.facebook.com/${metaGraphVersion()}/dialog/oauth`);
-      url.searchParams.set("client_id", requireEnv("META_APP_ID"));
-      url.searchParams.set("redirect_uri", redirectUri);
-      url.searchParams.set("state", state);
-      url.searchParams.set(
-        "scope",
-        "public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish",
-      );
-      url.searchParams.set("response_type", "code");
+      url.search = new URLSearchParams({
+        client_id: requireEnv("META_APP_ID"),
+        redirect_uri: redirectUri,
+        state,
+        scope:
+          "public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish",
+        response_type: "code",
+      }).toString();
       return url.href;
     },
-    async exchange({ code, redirectUri }) {
+    async exchange({ code, redirectUri, targetExternalId }) {
       const url = new URL(metaGraphBase() + "/oauth/access_token");
-      url.searchParams.set("client_id", requireEnv("META_APP_ID"));
-      url.searchParams.set("client_secret", requireEnv("META_APP_SECRET"));
-      url.searchParams.set("redirect_uri", redirectUri);
-      url.searchParams.set("code", code);
-      const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-      if (!response.ok) throw new ProviderConnectionError("provider_unavailable");
-      const token = (await response.json()) as {
-        access_token?: string;
-        token_type?: string;
-        expires_in?: number;
-      };
-      const pagesUrl = new URL(metaGraphBase() + "/me/accounts");
-      pagesUrl.searchParams.set(
-        "fields",
-        "id,name,access_token,instagram_business_account{id,username}",
-      );
-      pagesUrl.searchParams.set("limit", "100");
-      const result = await authorizedJson<{
-        data?: Array<{
-          id: string;
-          name?: string;
-          access_token?: string;
-          instagram_business_account?: { id?: string; username?: string };
-        }>;
-        paging?: { next?: string };
-      }>(pagesUrl, token.access_token ?? "");
-      const eligible = (result.data ?? []).filter(
-        (page) =>
-          page.access_token &&
-          page.id &&
-          (platform === "facebook" || page.instagram_business_account?.id),
-      );
-      if (result.paging?.next || eligible.length > 1)
+      url.search = new URLSearchParams({
+        client_id: requireEnv("META_APP_ID"),
+        client_secret: requireEnv("META_APP_SECRET"),
+        redirect_uri: redirectUri,
+        code,
+      }).toString();
+      const tokens = parseOAuthTokens(await exchangeJson(url));
+      const pageSchema = z.object({
+        id,
+        name: label.optional(),
+        access_token: z.string().optional(),
+        instagram_business_account: z
+          .object({ id: id.optional(), username: label.optional() })
+          .optional(),
+      });
+      const resultSchema = z.object({
+        data: z.array(pageSchema).default([]),
+        paging: z
+          .object({
+            next: z.string().optional(),
+            cursors: z.object({ after: pageTokenSchema.optional() }).optional(),
+          })
+          .optional(),
+      });
+      const eligible: Array<z.output<typeof pageSchema>> = [];
+      const seen = new Set<string>();
+      const deadline = AbortSignal.timeout(40_000);
+      let after: string | undefined;
+      do {
+        const pagesUrl = new URL(metaGraphBase() + "/me/accounts");
+        pagesUrl.searchParams.set(
+          "fields",
+          "id,name,access_token,instagram_business_account{id,username}",
+        );
+        pagesUrl.searchParams.set("limit", "100");
+        if (after) pagesUrl.searchParams.set("after", after);
+        const result = await authorizedJson(resultSchema, pagesUrl, tokens.accessToken, deadline);
+        eligible.push(
+          ...result.data.filter(
+            (page) =>
+              validToken(page.access_token) &&
+              (platform === "facebook" || page.instagram_business_account?.id),
+          ),
+        );
+        // Never follow a provider-supplied next URL with an Authorization header.
+        after = result.paging?.next ? result.paging.cursors?.after : undefined;
+        if (result.paging?.next && !after)
+          throw new ProviderConnectionError("account_selection_required");
+        if (after && (seen.has(after) || seen.size >= 20))
+          throw new ProviderConnectionError("account_selection_required");
+        if (after) seen.add(after);
+      } while (after);
+      const unique = [...new Map(eligible.map((page) => [page.id, page])).values()];
+      const accountId = (page: z.output<typeof pageSchema>) =>
+        platform === "instagram" ? page.instagram_business_account!.id : page.id;
+      if (!targetExternalId && unique.length > 1)
         throw new ProviderConnectionError("account_selection_required");
-      const page = eligible[0];
+      const page = targetExternalId
+        ? unique.find((value) => accountId(value) === targetExternalId)
+        : unique[0];
       if (!page) throw new ProviderConnectionError("no_eligible_account");
       return {
         accessToken: page.access_token!,
-        tokenType: token.token_type,
-        expiresAt: expiresInToIso(token.expires_in),
-        externalAccountId: platform === "instagram" ? page.instagram_business_account!.id : page.id,
+        tokenType: tokens.tokenType,
+        expiresAt: tokens.expiresAt,
+        externalAccountId: accountId(page),
         externalHandle:
           platform === "instagram" ? page.instagram_business_account?.username : page.name,
         metadata: {
@@ -129,188 +220,108 @@ function metaProvider(platform: "facebook" | "instagram"): Provider {
   };
 }
 const meta = metaProvider("facebook");
-
-/** LinkedIn */
 const linkedin: Provider = {
   platform: "linkedin",
   authUrl({ state, redirectUri }) {
-    const clientId = requireEnv("LINKEDIN_CLIENT_ID");
-    const u = new URL("https://www.linkedin.com/oauth/v2/authorization");
-    u.searchParams.set("response_type", "code");
-    u.searchParams.set("client_id", clientId);
-    u.searchParams.set("redirect_uri", redirectUri);
-    u.searchParams.set("state", state);
-    u.searchParams.set("scope", "openid profile email w_member_social");
-    return u.toString();
+    const url = new URL("https://www.linkedin.com/oauth/v2/authorization");
+    url.search = new URLSearchParams({
+      response_type: "code",
+      client_id: requireEnv("LINKEDIN_CLIENT_ID"),
+      redirect_uri: redirectUri,
+      state,
+      scope: "openid profile email w_member_social",
+    }).toString();
+    return url.href;
   },
   async exchange({ code, redirectUri }) {
-    const clientId = requireEnv("LINKEDIN_CLIENT_ID");
-    const clientSecret = requireEnv("LINKEDIN_CLIENT_SECRET");
-    const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
-      client_id: clientId,
-      client_secret: clientSecret,
-    });
-    const res = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    if (!res.ok) throw new Error(`linkedin exchange failed: ${res.status} ${await res.text()}`);
-    const json = (await res.json()) as {
-      access_token: string;
-      expires_in?: number;
-      refresh_token?: string;
-      scope?: string;
-    };
-    const profile = await authorizedJson<{ sub?: string; name?: string }>(
-      "https://api.linkedin.com/v2/userinfo",
-      json.access_token,
+    const json = await exchangeJson(
+      "https://www.linkedin.com/oauth/v2/accessToken",
+      new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+        client_id: requireEnv("LINKEDIN_CLIENT_ID"),
+        client_secret: requireEnv("LINKEDIN_CLIENT_SECRET"),
+      }),
     );
-    if (!profile.sub) throw new ProviderConnectionError("no_eligible_account");
+    const tokens = parseOAuthTokens(json, { expiryRequired: true });
+    const profile = await authorizedJson(
+      z.object({ sub: id, name: label.optional() }),
+      "https://api.linkedin.com/v2/userinfo",
+      tokens.accessToken,
+    );
     return {
-      accessToken: json.access_token,
-      refreshToken: json.refresh_token,
-      expiresAt: expiresInToIso(json.expires_in),
-      scope: json.scope,
+      ...tokens,
       externalAccountId: profile.sub,
       externalHandle: profile.name,
       metadata: { person_id: profile.sub },
     };
   },
 };
-
-/** Google (YouTube) */
 const google: Provider = {
   platform: "youtube",
-  authUrl({ state, redirectUri }) {
-    const clientId = requireEnv("GOOGLE_CLIENT_ID");
-    const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    u.searchParams.set("client_id", clientId);
-    u.searchParams.set("redirect_uri", redirectUri);
-    u.searchParams.set("response_type", "code");
-    u.searchParams.set("access_type", "offline");
-    u.searchParams.set("prompt", "consent");
-    u.searchParams.set("state", state);
-    u.searchParams.set(
-      "scope",
-      [
-        "https://www.googleapis.com/auth/youtube.upload",
-        "https://www.googleapis.com/auth/youtube.readonly",
-      ].join(" "),
-    );
-    return u.toString();
-  },
-  async exchange({ code, redirectUri }) {
-    const clientId = requireEnv("GOOGLE_CLIENT_ID");
-    const clientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
-    const body = new URLSearchParams({
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    });
-    const res = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    if (!res.ok) throw new Error(`google exchange failed: ${res.status} ${await res.text()}`);
-    const json = (await res.json()) as {
-      access_token: string;
-      refresh_token?: string;
-      expires_in?: number;
-      scope?: string;
-      token_type?: string;
-    };
-    const channels = await authorizedJson<{
-      items?: Array<{ id?: string; snippet?: { title?: string } }>;
-    }>(
+  authUrl: ({ state, redirectUri }) =>
+    googleAuthUrl(
+      "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly",
+      state,
+      redirectUri,
+    ),
+  async exchange(args): Promise<ProviderTokens> {
+    const tokens = await googleExchange(args);
+    const channels = await authorizedJson(
+      z.object({
+        items: z
+          .array(z.object({ id, snippet: z.object({ title: label.optional() }).optional() }))
+          .default([]),
+        nextPageToken: pageTokenSchema.optional(),
+      }),
       "https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true",
-      json.access_token,
+      tokens.accessToken,
     );
-    if ((channels.items?.length ?? 0) > 1)
+    if (channels.nextPageToken || (!args.targetExternalId && channels.items.length > 1))
       throw new ProviderConnectionError("account_selection_required");
-    const channel = channels.items?.[0];
-    if (!channel?.id) throw new ProviderConnectionError("no_eligible_account");
-    return {
-      externalAccountId: channel.id,
-      externalHandle: channel.snippet?.title,
-      accessToken: json.access_token,
-      refreshToken: json.refresh_token,
-      expiresAt: expiresInToIso(json.expires_in),
-      scope: json.scope,
-      tokenType: json.token_type,
-    };
+    const channel = args.targetExternalId
+      ? channels.items.find((item) => item.id === args.targetExternalId)
+      : channels.items[0];
+    if (!channel) throw new ProviderConnectionError("no_eligible_account");
+    return { ...tokens, externalAccountId: channel.id, externalHandle: channel.snippet?.title };
   },
 };
-
-/**
- * Google Business Profile.
- *
- * Uses the same Google OAuth client as YouTube but a different scope, so the
- * consent screen clearly states what the user is granting. The dedicated scope
- * `business.manage` is intentionally broad — Google has no narrower scope for
- * creating local posts, and requesting it here keeps the grant visible instead
- * of hiding it inside the YouTube flow.
- *
- * Approval requirement: the Google Cloud project must have the Business Profile
- * APIs enabled and be allowlisted for `business.manage`. Without that, exchange
- * succeeds but the first API call returns 403 — hence the explicit check in
- * `discoverLocations` below rather than a silent empty list.
- */
 const googleBusiness: Provider = {
   platform: "google_business",
-  authUrl({ state, redirectUri }) {
-    const clientId = requireEnv("GOOGLE_CLIENT_ID");
-    const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    u.searchParams.set("client_id", clientId);
-    u.searchParams.set("redirect_uri", redirectUri);
-    u.searchParams.set("response_type", "code");
-    u.searchParams.set("access_type", "offline");
-    u.searchParams.set("prompt", "consent");
-    u.searchParams.set("state", state);
-    u.searchParams.set("scope", "https://www.googleapis.com/auth/business.manage");
-    return u.toString();
-  },
-  async exchange({ code, redirectUri }) {
-    const clientId = requireEnv("GOOGLE_CLIENT_ID");
-    const clientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
-    const body = new URLSearchParams({
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    });
-    const res = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    if (!res.ok)
-      throw new Error(`google_business exchange failed: ${res.status} ${await res.text()}`);
-    const json = (await res.json()) as {
-      access_token: string;
-      refresh_token?: string;
-      expires_in?: number;
-      scope?: string;
-      token_type?: string;
-    };
-
-    const locations = await listBusinessLocations(json.access_token);
-    if (locations.length === 0) throw new ProviderConnectionError("no_eligible_account");
-    const accountId = locations[0].accountId;
+  authUrl: ({ state, redirectUri }) =>
+    googleAuthUrl("https://www.googleapis.com/auth/business.manage", state, redirectUri),
+  async exchange(args): Promise<ProviderTokens> {
+    const tokens = await googleExchange(args);
+    const locations = await listBusinessLocations(tokens.accessToken);
+    if (!locations.length) throw new ProviderConnectionError("no_eligible_account");
+    if (args.targetExternalId?.includes("/locations/")) {
+      const chosen = locations.find((location) => location.name === args.targetExternalId);
+      if (!chosen?.verified) throw new ProviderConnectionError("no_eligible_account");
+      return {
+        ...tokens,
+        externalAccountId: chosen.name,
+        externalHandle: chosen.locationName,
+        metadata: {
+          requires_location_selection: false,
+          location_confirmed: true,
+          account_id: chosen.accountId,
+          location_id: chosen.locationId,
+          location_name: chosen.locationName,
+          address: chosen.address ?? null,
+        },
+      };
+    }
+    const accounts = [...new Set(locations.map((location) => `accounts/${location.accountId}`))];
+    if (!args.targetExternalId && accounts.length > 1)
+      throw new ProviderConnectionError("account_selection_required");
+    const account = args.targetExternalId
+      ? accounts.find((value) => value === args.targetExternalId)
+      : accounts[0];
+    if (!account) throw new ProviderConnectionError("no_eligible_account");
     return {
-      accessToken: json.access_token,
-      refreshToken: json.refresh_token,
-      expiresAt: expiresInToIso(json.expires_in),
-      scope: json.scope,
-      tokenType: json.token_type,
-      externalAccountId: `accounts/${accountId}`,
+      ...tokens,
+      externalAccountId: account,
       externalHandle: "Google Business — selecione uma unidade",
       metadata: { requires_location_selection: true, location_confirmed: false },
     };
@@ -318,129 +329,139 @@ const googleBusiness: Provider = {
 };
 
 export interface BusinessLocation {
-  /** Resource name: accounts/{a}/locations/{l} */
   name: string;
   accountId: string;
   locationId: string;
   locationName: string;
   address?: string;
-  /** False when the listing is not verified — posts are rejected until it is. */
+  /** Current Voice of Merchant, not a guessed historical verification flag. */
   verified: boolean;
 }
-
-/**
- * Lists the locations the authenticated user can manage.
- *
- * Google's Business Profile API is a two-step walk: accounts.list, then
- * locations.list per account. The flat result is what the channel picker needs.
- */
-export async function listBusinessLocations(accessToken: string): Promise<BusinessLocation[]> {
-  const accounts: Array<{ name?: string }> = [];
+async function discoverBusinessLocations(accessToken: string): Promise<BusinessLocation[]> {
+  const accounts: string[] = [];
+  const deadline = AbortSignal.timeout(40_000);
   let pageToken: string | undefined;
+  let seen = new Set<string>();
+  const next = (value: string | undefined) => {
+    if (value && (seen.has(value) || seen.size >= 100))
+      throw new ProviderConnectionError("provider_unavailable");
+    if (value) seen.add(value);
+    return value;
+  };
   do {
     const url = new URL("https://mybusinessaccountmanagement.googleapis.com/v1/accounts");
     url.searchParams.set("pageSize", "20");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const page = await authorizedJson<{
-      accounts?: Array<{ name?: string }>;
-      nextPageToken?: string;
-    }>(url, accessToken);
-    accounts.push(...(page.accounts ?? []));
-    pageToken = page.nextPageToken;
+    const page = await authorizedJson(
+      z.object({
+        accounts: z.array(z.object({ name: z.string().regex(/^accounts\/[0-9]+$/) })).default([]),
+        nextPageToken: pageTokenSchema.optional(),
+      }),
+      url,
+      accessToken,
+      deadline,
+    );
+    accounts.push(...page.accounts.map((account) => account.name));
+    pageToken = next(page.nextPageToken);
     if (accounts.length > 2000) throw new ProviderConnectionError("account_selection_required");
   } while (pageToken);
-  const out: BusinessLocation[] = [];
-  for (const account of accounts) {
-    if (!account.name || !/^accounts\/[A-Za-z0-9_-]+$/.test(account.name)) continue;
+  const out = new Map<string, BusinessLocation>();
+  for (const account of new Set(accounts)) {
     pageToken = undefined;
+    seen = new Set();
     do {
       const url = new URL(
-        `https://mybusinessbusinessinformation.googleapis.com/v1/${account.name}/locations`,
+        `https://mybusinessbusinessinformation.googleapis.com/v1/${account}/locations`,
       );
       url.searchParams.set("readMask", "name,title,storefrontAddress");
       url.searchParams.set("pageSize", "100");
       if (pageToken) url.searchParams.set("pageToken", pageToken);
-      const page = await authorizedJson<{
-        locations?: Array<{
-          name?: string;
-          title?: string;
-          storefrontAddress?: { addressLines?: string[]; locality?: string; regionCode?: string };
-        }>;
-        nextPageToken?: string;
-      }>(url, accessToken);
-      for (const location of page.locations ?? []) {
-        if (!location.name || !/^locations\/[A-Za-z0-9_-]+$/.test(location.name)) continue;
-        // The presence of a location is NOT proof of verification. Consult the real verification state.
-        const state = await authorizedJson<{ hasVoiceOfMerchant?: boolean }>(
+      const page = await authorizedJson(
+        z.object({
+          locations: z
+            .array(
+              z.object({
+                name: z.string().regex(/^locations\/[0-9]+$/),
+                title: label.optional(),
+                storefrontAddress: z
+                  .object({
+                    addressLines: z.array(label).optional(),
+                    locality: label.optional(),
+                    regionCode: z.string().max(10).optional(),
+                  })
+                  .optional(),
+              }),
+            )
+            .default([]),
+          nextPageToken: pageTokenSchema.optional(),
+        }),
+        url,
+        accessToken,
+        deadline,
+      );
+      for (const location of page.locations) {
+        const state = await authorizedJson(
+          z.object({ hasVoiceOfMerchant: z.boolean().optional() }),
           `https://mybusinessverifications.googleapis.com/v1/${location.name}/VoiceOfMerchantState`,
           accessToken,
+          deadline,
         );
         const locationId = location.name.split("/")[1];
-        const addr = location.storefrontAddress;
-        out.push({
-          name: `${account.name}/locations/${locationId}`,
-          accountId: account.name.split("/")[1],
+        const address = location.storefrontAddress;
+        const name = `${account}/locations/${locationId}`;
+        out.set(name, {
+          name,
+          accountId: account.split("/")[1],
           locationId,
           locationName: location.title ?? `Location ${locationId}`,
           verified: state.hasVoiceOfMerchant === true,
-          address: [addr?.addressLines?.join(", "), addr?.locality, addr?.regionCode]
+          address: [address?.addressLines?.join(", "), address?.locality, address?.regionCode]
             .filter(Boolean)
             .join(" · "),
         });
-        if (out.length > 2000) throw new ProviderConnectionError("account_selection_required");
+        if (out.size > 2000) throw new ProviderConnectionError("account_selection_required");
       }
-      pageToken = page.nextPageToken;
+      pageToken = next(page.nextPageToken);
     } while (pageToken);
   }
-  return out;
+  return [...out.values()];
 }
-
-/** TikTok (Login Kit / Content Posting API) */
+export async function listBusinessLocations(accessToken: string): Promise<BusinessLocation[]> {
+  try {
+    return await discoverBusinessLocations(accessToken);
+  } catch (error) {
+    if (error instanceof ProviderConnectionError) throw error;
+    throw new ProviderConnectionError("provider_unavailable");
+  }
+}
 const tiktok: Provider = {
   platform: "tiktok",
   authUrl({ state, redirectUri }) {
-    const clientKey = requireEnv("TIKTOK_CLIENT_KEY");
-    const u = new URL("https://www.tiktok.com/v2/auth/authorize/");
-    u.searchParams.set("client_key", clientKey);
-    u.searchParams.set("redirect_uri", redirectUri);
-    u.searchParams.set("response_type", "code");
-    u.searchParams.set("state", state);
-    u.searchParams.set("scope", "user.info.basic,video.upload,video.publish");
-    return u.toString();
+    const url = new URL("https://www.tiktok.com/v2/auth/authorize/");
+    url.search = new URLSearchParams({
+      client_key: requireEnv("TIKTOK_CLIENT_KEY"),
+      redirect_uri: redirectUri,
+      response_type: "code",
+      state,
+      scope: "user.info.basic,video.upload,video.publish",
+    }).toString();
+    return url.href;
   },
   async exchange({ code, redirectUri }) {
-    const clientKey = requireEnv("TIKTOK_CLIENT_KEY");
-    const clientSecret = requireEnv("TIKTOK_CLIENT_SECRET");
-    const body = new URLSearchParams({
-      client_key: clientKey,
-      client_secret: clientSecret,
-      code,
-      grant_type: "authorization_code",
-      redirect_uri: redirectUri,
-    });
-    const res = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    if (!res.ok) throw new Error(`tiktok exchange failed: ${res.status} ${await res.text()}`);
-    const json = (await res.json()) as {
-      access_token: string;
-      refresh_token?: string;
-      expires_in?: number;
-      open_id?: string;
-      scope?: string;
-    };
-    return {
-      accessToken: json.access_token,
-      refreshToken: json.refresh_token,
-      expiresAt: expiresInToIso(json.expires_in),
-      scope: json.scope,
-      externalAccountId: json.open_id,
-    };
+    const json = await exchangeJson(
+      "https://open.tiktokapis.com/v2/oauth/token/",
+      new URLSearchParams({
+        client_key: requireEnv("TIKTOK_CLIENT_KEY"),
+        client_secret: requireEnv("TIKTOK_CLIENT_SECRET"),
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+      }),
+    );
+    const tokens = parseOAuthTokens(json, { expiryRequired: true });
+    return { ...tokens, externalAccountId: parse(id, json.open_id) };
   },
 };
-
 export type SupportedProvider =
   | "meta"
   | "facebook"
@@ -450,7 +471,6 @@ export type SupportedProvider =
   | "youtube"
   | "google_business"
   | "tiktok";
-
 const REGISTRY: Record<SupportedProvider, Provider> = {
   meta,
   facebook: meta,
@@ -461,13 +481,21 @@ const REGISTRY: Record<SupportedProvider, Provider> = {
   google_business: googleBusiness,
   tiktok,
 };
-
 export function getProvider(name: string): Provider {
-  const p = REGISTRY[name as SupportedProvider];
-  if (!p) throw new Error(`unsupported oauth provider: ${name}`);
-  return p;
+  const provider = Object.hasOwn(REGISTRY, name) ? REGISTRY[name as SupportedProvider] : undefined;
+  if (!provider) throw new Error("Unsupported OAuth provider");
+  return {
+    ...provider,
+    exchange: async (args) => {
+      try {
+        return await provider.exchange(args);
+      } catch (error) {
+        if (error instanceof ProviderConnectionError) throw error;
+        throw new ProviderConnectionError("provider_unavailable");
+      }
+    },
+  };
 }
-
 export function listProviders(): SupportedProvider[] {
   return Object.keys(REGISTRY) as SupportedProvider[];
 }

@@ -10,23 +10,26 @@ O diferencial não é ser mais um agendador de posts. É ser a camada de **julga
 
 ## Estado atual, sem marketing
 
-| Área                                | Situação neste estágio                                                                                   |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Publicação web e Supabase exclusivo | Portfólio funcional, em validação; não é liberação comercial                                             |
-| Autenticação, workspace e navegação | Bootstrap e cache por usuário; regressões de login/recarga/recuperação incluídas                         |
-| Perfil e equipe                     | Nome carregado/validado, save confirmado, rascunho preservado e consulta de membros sob RLS              |
-| Conteúdo                            | Criar/editar texto e URLs de mídia com persistência confirmada; salvar não publica; sem upload/carrossel |
-| Agendamento                         | Enqueue/cancelamento atômicos, checkpoints/reconciliação duráveis e revisão auditada sem reenvio         |
-| Interface e idioma                  | Fluxo principal pt-BR/en-US; tradução avançada ainda parcial                                             |
-| USE Brain                           | Regras determinísticas por padrão; não é IA generativa nem pesquisa de mercado ao vivo                   |
-| Oportunidades globais               | Catálogo demonstrativo identificado na interface                                                         |
-| Publicadores sociais                | Código implementado para algumas plataformas; requer credenciais, aprovações e homologação real          |
-| Métricas e cron                     | Infraestrutura configurada; coleta real depende de canais autorizados e publicações reais                |
-| RLS/RBAC                            | 87 novos checks reais de reconciliação/rollback; 116 históricos de integridade; não é pentest            |
-| IA, Google login e SMTP             | Dependem de configuração/validação; Google login não é exibido sem opt-in                                |
-| Commerce Hub / RAG                  | Não implementados; não prometer como recursos disponíveis                                                |
+| Área                                | Situação neste estágio                                                                                                |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Publicação web e Supabase exclusivo | Portfólio funcional, em validação; não é liberação comercial                                                          |
+| Autenticação, workspace e navegação | Bootstrap e cache por usuário; regressões de login/recarga/recuperação incluídas                                      |
+| Perfil e equipe                     | Nome carregado/validado, save confirmado, rascunho preservado e consulta de membros sob RLS                           |
+| Conteúdo                            | Criar/editar texto e URLs de mídia com persistência confirmada; salvar não publica; sem upload/carrossel              |
+| Agendamento                         | Enqueue/cancelamento atômicos, checkpoints/reconciliação duráveis e revisão auditada sem reenvio                      |
+| Interface e idioma                  | Fluxo principal pt-BR/en-US; tradução avançada ainda parcial                                                          |
+| USE Brain                           | Regras determinísticas por padrão; não é IA generativa nem pesquisa de mercado ao vivo                                |
+| Oportunidades globais               | Catálogo demonstrativo identificado na interface                                                                      |
+| Publicadores sociais                | Código implementado para algumas plataformas; requer credenciais, aprovações e homologação real                       |
+| Métricas e cron                     | Infraestrutura configurada; coleta real depende de canais autorizados e publicações reais                             |
+| OAuth e Google Business             | Tentativas single-use, refresh versionado/lease e primeiro vínculo de unidade explícito; homologação externa pendente |
+| RLS/RBAC                            | 133 novos checks reais OAuth/rollback e concorrência entre processos; rodadas anteriores históricas; não é pentest    |
+| IA, Google login e SMTP             | Dependem de configuração/validação; Google login não é exibido sem opt-in                                             |
+| Commerce Hub / RAG                  | Não implementados; não prometer como recursos disponíveis                                                             |
 
 Veja [portfólio e checklist para clientes](./docs/PORTFOLIO_E_CLIENTES.md) para escopo e pendências. A [rodada 4 de reconciliação](./docs/QA_RECONCILIACAO_RODADA_4.md) registra 978 testes/61 arquivos, 87 novos checks SQL reais, 25 checks HTTP de reconciliação, 22 de regressão funcional e 22 de navegador, com 11 análises Axe sem violações detectadas. As cinco suítes SQL locais somaram 203 checks em uma execução focada PGlite. Os 116 checks SQL reais da [rodada 3](./docs/QA_FUNCIONAL_RODADA_3.md) são históricos, não um novo run remoto. São camadas de evidência diferentes; nenhuma equivale a homologação externa.
+
+A [rodada 5 de credenciais OAuth](./docs/QA_OAUTH_RODADA_5.md) passou em **1.138 testes/66 arquivos**, **336 checks SQL locais/8 suítes**, **133 novos checks Supabase com rollback**, 25 checks runtime/12 interleavings, três disputas simultâneas entre processos e 12 checks de navegador/12 análises Axe sem violações detectadas. Tentativas single-use, refresh versionado e vínculo GBP explícito estão descritos no [manual operacional](./docs/CICLO_CREDENCIAIS_OAUTH.md). Auth/RLS e persistência são reais; respostas de provedor são sintéticas somente no harness externo. Fixtures removidas, nenhuma conexão/publicação social real. SHA/CI/deploy/smoke remotos continuam sendo evidência operacional separada.
 
 A honestidade é um requisito de produto: a tela de Agendamento distingue configuração presente de conexão autorizada. A API exige pré-voo e conexão/token para enfileirar, mas isso não comprova validade atual do grant, aprovação do app ou visibilidade da publicação. Erros e resultados sem confirmação não são apresentados como sucesso.
 

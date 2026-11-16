@@ -49,6 +49,21 @@ Método, escopo e limites em [QA_FUNCIONAL_RODADA_3.md](./docs/QA_FUNCIONAL_RODA
 
 Evidências e distinção entre testes locais, banco real, respostas sintéticas de provedor e publicação remota em [QA_RECONCILIACAO_RODADA_4.md](./docs/QA_RECONCILIACAO_RODADA_4.md). CI paralelo e deploy Git/main-only não foram alterados.
 
+### Quinta rodada: ciclo de credenciais OAuth
+
+- [x] Consumir tentativa única antes do exchange, vinculada a ator/workspace/provedor/marca/redirect/alvo/TTL; negar replay e callback tardio após disconnect/delete.
+- [x] Renovar com versão/lease/begin reconhecidos e CAS; proibir UPSERT de worker antigo e retry cego de grant rotativo. Resolver commit sem reconhecimento pelo recibo UUID.
+- [x] Separar busy/cooldown/indisponibilidade transitória de credencial inválida/incerta; preservar reconciliação sem reenvio e invalidação analítica por versão.
+- [x] Corrigir o primeiro vínculo GBP explicitamente, com discovery/Voice of Merchant atual e RPC versionado; impedir retarget de unidade/histórico e agendamento sem vínculo confirmado.
+- [x] Validar tokens/expiração/respostas sem coerção ou vazamento, limitar corpo/tempo, recusar redirects; traduzir estados e ações PT/EN.
+- [x] Aplicar e conferir hash da migration 29 no VELT; 133 novos checks SQL reais/rollback e ACLs, fingerprints reais preservados.
+- [x] Typecheck/lint/build Vercel Node 22, 1.138 testes/66 arquivos, audit de produção zero reportado; 336 checks locais em oito suítes.
+- [x] Runtime real com 25 checks/12 interleavings e três disputas simultâneas entre processos; navegador com 12 checks/12 Axe sem violações detectadas. Fixtures removidas, nenhum job executável ou conta/publicação social real.
+- [x] Documentar operação, schema legado fechado e limites em [CICLO_CREDENCIAIS_OAUTH.md](./docs/CICLO_CREDENCIAIS_OAUTH.md); método/evidências em [QA_OAUTH_RODADA_5.md](./docs/QA_OAUTH_RODADA_5.md).
+- [ ] Homologar OAuth/publicação/consulta/coleta reais e o restante do checklist comercial com autorização específica. Não liberar clientes por contagem de testes, configuração ou HTTP 200.
+
+SHA/CI/deploy/smoke remoto são registrados separadamente. Main-only/CI paralelo preservados.
+
 ---
 
 **Atualizado:** 11/11/2026

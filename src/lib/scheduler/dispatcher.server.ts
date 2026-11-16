@@ -7,6 +7,7 @@ import {
   PublisherError,
   type PublishInput,
 } from "./publishers.server";
+import { OAuthCredentialError } from "@/lib/oauth/errors.server";
 import { getFreshToken } from "@/lib/oauth/refresh.server";
 import {
   publicationTarget,
@@ -141,7 +142,10 @@ async function processOne(job: Job): Promise<DispatchSummary["jobs"][number]> {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha na autorização do canal.";
       throw new PublisherError(`token refresh falhou: ${message}`, {
-        retryable: !/sem token|reconect|revogad|invalid_grant/i.test(message),
+        retryable:
+          error instanceof OAuthCredentialError
+            ? error.retryable
+            : !/sem token|reconect|revogad|invalid_grant/i.test(message),
       });
     }
     const result = await publishToPlatform(input);

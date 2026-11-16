@@ -780,6 +780,9 @@ export type Database = {
       }
       channels: {
         Row: {
+          authorization_issue: string | null
+          oauth_revoked_at: string | null
+          oauth_authorization_started_at: string | null
           brand_id: string | null
           connected_at: string | null
           created_at: string
@@ -794,6 +797,9 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          authorization_issue?: string | null
+          oauth_revoked_at?: string | null
+          oauth_authorization_started_at?: string | null
           brand_id?: string | null
           connected_at?: string | null
           created_at?: string
@@ -808,6 +814,9 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          authorization_issue?: string | null
+          oauth_revoked_at?: string | null
+          oauth_authorization_started_at?: string | null
           brand_id?: string | null
           connected_at?: string | null
           created_at?: string
@@ -1523,8 +1532,95 @@ export type Database = {
           },
         ]
       }
+      oauth_authorization_contexts: {
+        Row: {
+          workspace_id: string
+          platform: Database["public"]["Enums"]["social_platform"]
+          version: string
+        }
+        Insert: {
+          workspace_id: string
+          platform: Database["public"]["Enums"]["social_platform"]
+          version?: string
+        }
+        Update: {
+          workspace_id?: string
+          platform?: Database["public"]["Enums"]["social_platform"]
+          version?: string
+        }
+        Relationships: []
+      }
+      oauth_authorization_attempts: {
+        Row: {
+          id: string
+          state_hash: string
+          workspace_id: string
+          actor_id: string
+          brand_id: string | null
+          provider: string
+          platform: Database["public"]["Enums"]["social_platform"]
+          context_version: string
+          target_channel_id: string | null
+          target_external_id: string | null
+          redirect_uri: string
+          created_at: string
+          expires_at: string
+          state: string
+          exchange_token: string | null
+          exchange_until: string | null
+          finished_at: string | null
+          reason: string | null
+        }
+        Insert: {
+          id?: string
+          state_hash: string
+          workspace_id: string
+          actor_id: string
+          brand_id?: string | null
+          provider: string
+          platform: Database["public"]["Enums"]["social_platform"]
+          context_version: string
+          target_channel_id?: string | null
+          target_external_id?: string | null
+          redirect_uri: string
+          created_at?: string
+          expires_at: string
+          state?: string
+          exchange_token?: string | null
+          exchange_until?: string | null
+          finished_at?: string | null
+          reason?: string | null
+        }
+        Update: {
+          id?: string
+          state_hash?: string
+          workspace_id?: string
+          actor_id?: string
+          brand_id?: string | null
+          provider?: string
+          platform?: Database["public"]["Enums"]["social_platform"]
+          context_version?: string
+          target_channel_id?: string | null
+          target_external_id?: string | null
+          redirect_uri?: string
+          created_at?: string
+          expires_at?: string
+          state?: string
+          exchange_token?: string | null
+          exchange_until?: string | null
+          finished_at?: string | null
+          reason?: string | null
+        }
+        Relationships: []
+      }
       oauth_tokens: {
         Row: {
+          token_version: string
+          refresh_lease: string | null
+          refresh_locked_until: string | null
+          refresh_started_at: string | null
+          refresh_retry_after: string | null
+          refresh_uncertain: boolean
           access_token_ciphertext: string
           channel_id: string
           created_at: string
@@ -1536,6 +1632,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          token_version?: string
+          refresh_lease?: string | null
+          refresh_locked_until?: string | null
+          refresh_started_at?: string | null
+          refresh_retry_after?: string | null
+          refresh_uncertain?: boolean
           access_token_ciphertext: string
           channel_id: string
           created_at?: string
@@ -1547,6 +1649,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          token_version?: string
+          refresh_lease?: string | null
+          refresh_locked_until?: string | null
+          refresh_started_at?: string | null
+          refresh_retry_after?: string | null
+          refresh_uncertain?: boolean
           access_token_ciphertext?: string
           channel_id?: string
           created_at?: string
@@ -2092,6 +2200,120 @@ export type Database = {
       }
     }
     Functions: {
+      register_oauth_authorization: {
+        Args: {
+          _workspace_id: string
+          _provider: string
+          _platform: Database["public"]["Enums"]["social_platform"]
+          _brand_id: string | null
+          _state_hash: string
+          _redirect_uri: string
+          _expires_at: string
+          _channel_id?: string | null
+        }
+        Returns: string
+      }
+      consume_oauth_authorization: {
+        Args: {
+          _state_hash: string
+          _workspace_id: string
+          _actor_id: string
+          _provider: string
+          _brand_id: string | null
+          _redirect_uri: string
+          _channel_id?: string | null
+        }
+        Returns: Database["public"]["Tables"]["oauth_authorization_attempts"]["Row"]
+      }
+      fail_oauth_authorization: {
+        Args: {
+          _attempt_id: string
+          _exchange_token: string
+          _reason: string
+        }
+        Returns: boolean
+      }
+      complete_oauth_authorization: {
+        Args: {
+          _attempt_id: string
+          _exchange_token: string
+          _external_id: string
+          _handle: string | null
+          _metadata: Json
+          _access_ciphertext: string
+          _refresh_ciphertext: string | null
+          _token_type: string | null
+          _scope: string | null
+          _expires_at: string | null
+        }
+        Returns: Database["public"]["Tables"]["channels"]["Row"]
+      }
+      claim_oauth_token_refresh: {
+        Args: {
+          _channel_id: string
+          _platform: Database["public"]["Enums"]["social_platform"]
+          _expected_version: string
+        }
+        Returns: Json
+      }
+      begin_oauth_token_refresh: {
+        Args: {
+          _channel_id: string
+          _expected_version: string
+          _lease: string
+        }
+        Returns: boolean
+      }
+      complete_oauth_token_refresh: {
+        Args: {
+          _channel_id: string
+          _expected_version: string
+          _lease: string
+          _new_version: string
+          _access_ciphertext: string
+          _refresh_ciphertext: string | null
+          _expires_at: string
+          _scope: string | null
+          _token_type: string | null
+        }
+        Returns: boolean
+      }
+      fail_oauth_token_refresh: {
+        Args: {
+          _channel_id: string
+          _expected_version: string
+          _lease: string
+          _outcome: string
+        }
+        Returns: boolean
+      }
+      invalidate_oauth_token_version: {
+        Args: {
+          _channel_id: string
+          _expected_version: string
+          _issue: string
+        }
+        Returns: boolean
+      }
+      bind_google_business_location: {
+        Args: {
+          _workspace_id: string
+          _actor_id: string
+          _channel_id: string
+          _expected_version: string
+          _location_reference: string
+          _location_name: string
+          _address: string | null
+        }
+        Returns: Database["public"]["Tables"]["channels"]["Row"]
+      }
+      read_connected_oauth_token: {
+        Args: {
+          _channel_id: string
+          _platform: Database["public"]["Enums"]["social_platform"]
+        }
+        Returns: Database["public"]["Tables"]["oauth_tokens"]["Row"]
+      }
       claim_publication_jobs: {
         Args: { _limit?: number; _lock_seconds?: number; _workspace_id?: string | null }
         Returns: Database["public"]["Tables"]["scheduler_jobs"]["Row"][]

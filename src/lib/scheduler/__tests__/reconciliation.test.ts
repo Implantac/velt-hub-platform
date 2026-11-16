@@ -9,6 +9,7 @@ vi.mock("../observe.server", () => ({ observePublication: mocks.observe }));
 vi.mock("../publishers.server", () => {
   throw new Error("Read-only reconciliation must not import a publisher");
 });
+import { OAuthCredentialError } from "@/lib/oauth/errors.server";
 import { runPublicationReconciliation } from "../reconciliation.server";
 
 const ws = "11111111-1111-4111-8111-111111111111",
@@ -342,5 +343,26 @@ describe("read-only durable reconciliation service", () => {
       "Limite inválido",
     );
     expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it.each(["refresh_busy", "refresh_cooldown", "credential_changed", "store_unavailable"] as const)(
+    "keeps transient OAuth %s pending without a provider read or manual-review downgrade",
+    async (code) => {
+      mocks.token.mockRejectedValue(new OAuthCredentialError(code, true));
+      expect(await runPublicationReconciliation(opts)).toMatchObject({
+        pending: 1,
+        providerQueries: 0,
+        review: 0,
+      });
+      expect(mocks.observe).not.toHaveBeenCalled();
+      expect(settlements()[0][1]._state).toBe("pending");
+    },
+  );
+  it("requires explicit review for an uncertain rotating grant, without contacting the provider", async () => {
+    mocks.token.mockRejectedValue(new OAuthCredentialError("refresh_uncertain", false));
+    expect(await runPublicationReconciliation(opts)).toMatchObject({
+      review: 1,
+      providerQueries: 0,
+    });
+    expect(mocks.observe).not.toHaveBeenCalled();
   });
 });

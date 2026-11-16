@@ -508,12 +508,35 @@
     "oauthErrors": {
       "provider_denied": "A autorização foi cancelada no provedor.",
       "connection_failed": "Não foi possível confirmar a conexão. Inicie a autorização novamente.",
-      "account_selection_required": "O provedor retornou várias contas. Para evitar publicar na conta errada, autorize somente a conta desejada e tente novamente.",
+      "account_selection_required": "O provedor retornou várias contas. Use “Reconectar a mesma conta” em um canal existente ou autorize somente a conta desejada. Nenhuma conta será escolhida automaticamente.",
       "no_eligible_account": "Nenhuma conta publicável foi retornada pelo provedor. Confira o tipo de conta e as permissões concedidas.",
-      "provider_unavailable": "O provedor não permitiu consultar as contas ou unidades. Confira as APIs e permissões da aplicação e tente novamente."
+      "provider_unavailable": "O provedor não permitiu consultar as contas ou unidades. Confira as APIs e permissões da aplicação e tente novamente.",
+      "authorization_used": "Esta autorização já foi usada, cancelada ou expirou. Inicie uma nova em Canais."
     },
-    "confirmDisconnect": "Desconectar este canal e remover as credenciais salvas? Agendamentos pendentes não serão publicados enquanto ele estiver desconectado.",
-    "confirmDelete": "Excluir o canal e seu histórico associado? Cancele os agendamentos pendentes antes de excluir. Esta ação não remove publicações já feitas no provedor."
+    "confirmDisconnect": "Remover as credenciais salvas e cancelar autorizações em andamento desta plataforma no workspace? Agendamentos não serão publicados enquanto o canal estiver desconectado. Isso não revoga permissões no provedor nem cancela uma chamada que já foi enviada.",
+    "confirmDelete": "Excluir o canal e seu histórico associado? Cancele os agendamentos pendentes antes de excluir. Esta ação não remove publicações já feitas no provedor.",
+    "reconnect": "Reconectar a mesma conta",
+    "authorizationIssues": {
+      "refresh_uncertain": "O resultado da renovação é incerto. Não repetiremos o pedido automaticamente, pois o provedor pode ter trocado o token. Reconecte a mesma conta para continuar.",
+      "invalid_grant": "O provedor recusou a autorização salva. Reconecte a mesma conta para continuar.",
+      "missing_refresh": "Esta credencial expirou e não permite renovação automática. Reconecte a mesma conta para continuar.",
+      "invalid_token": "Não foi possível validar a credencial ou sua validade. Reconecte a mesma conta para continuar.",
+      "provider_unauthorized": "O provedor recusou a credencial usada na coleta. Reconecte a mesma conta e confira as permissões."
+    },
+    "location": {
+      "loading": "Buscando unidades no Google…",
+      "errorTitle": "Não foi possível listar as unidades.",
+      "errorDescription": "Atualize o canal e confira a autorização, as APIs do Google Business e as permissões da aplicação. Nenhum vínculo foi confirmado.",
+      "retry": "Tentar novamente",
+      "empty": "Nenhuma unidade encontrada nesta conta Google. Crie ou verifique uma unidade no Google Business Profile antes de publicar.",
+      "title": "Unidade que recebe os posts",
+      "boundNotice": "Este canal permanece vinculado à unidade escolhida. Para outra unidade, inicie uma conexão separada; o histórico e os agendamentos não serão transferidos.",
+      "current": "Unidade vinculada",
+      "unverified": "Sem autorização atual de gestão (Voice of Merchant) — publicação bloqueada.",
+      "saving": "Salvando…",
+      "saved": "Unidade vinculada: {{name}}",
+      "saveFailed": "O vínculo não foi confirmado. Atualize as unidades e tente novamente. Uma unidade já vinculada não pode ser trocada."
+    }
   },
   "brands": {
     "title": "Marcas",

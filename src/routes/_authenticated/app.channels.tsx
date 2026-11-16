@@ -47,7 +47,7 @@ function ChannelsPageWorkspace() {
 
         <ConnectPlatformGrid
           disabled={!access.canManage || !q.wsId || connectMut.isPending}
-          onConnect={(oauth) => connectMut.mutate(oauth)}
+          onConnect={(oauth) => connectMut.mutate({ provider: oauth })}
         />
 
         <ManualRegisterForm
@@ -78,7 +78,7 @@ function ChannelsPageWorkspace() {
                 }
                 onDelete={() => delMut.mutate(c.id)}
                 onDisconnect={() => disconnectMut.mutate(c.id)}
-                onConnect={(oauth) => connectMut.mutate(oauth)}
+                onConnect={(oauth, channelId) => connectMut.mutate({ provider: oauth, channelId })}
               />
             ))}
             {q.data?.length === 0 && (

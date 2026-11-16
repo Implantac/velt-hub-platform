@@ -53,6 +53,17 @@ Detalhes históricos, sete migrations da rodada 3, método de isolamento e limit
 
 Consulte [evidências e limites](./QA_RECONCILIACAO_RODADA_4.md) e [manual de recuperação](./RECONCILIACAO_PUBLICACOES.md). O resultado não é uma promessa de exactly-once em serviços externos ou de ausência de bugs. A finalidade de portfólio não permite operação vazia, falso sucesso ou mock em produção.
 
+## Quinta rodada: ciclo de credenciais OAuth
+
+- **Autorização única:** tentativa privada vinculada ao ator/workspace/provedor/marca/redirect/alvo/TTL; callback consome antes do exchange. Desconectar/excluir invalida tentativas da mesma plataforma, inclusive callbacks genéricos cujo ID externo ainda não era conhecido. Reconexão preserva conta e marca.
+- **Renovação concorrente:** versão UUID, lease no Postgres, begin reconhecido e commit CAS; um único grant entre processos. Resposta tardia não desfaz disconnect/delete/reautorização. Commit sem reconhecimento usa recibo, não outro grant rotativo. Estado incerto exige reconexão explícita; busy/cooldown são transitórios.
+- **Validação e analytics:** tokens/expiração/scope estritos; timeout, redirects recusados e corpos limitados no exchange/discovery. Erro analítico invalida somente a versão usada. Espera transitória de autorização não vira revisão permanente ou reenvio implícito da publicação.
+- **Google Business:** primeiro vínculo agora persiste de fato, por escolha explícita, após descoberta/Voice of Merchant atual e RPC versionado. Unidade/histórico estabelecidos não são transferidos; agendamento exige vínculo confirmado. Erros não viram lista vazia nem sucesso falso.
+- **QA selecionado:** typecheck/lint/build, 1.138 testes/66 arquivos, 336 checks SQL locais em oito suítes, 133 novos checks Supabase/rollback; 25 checks runtime/12 interleavings, três corridas de claim entre processos e 12 checks navegador/12 Axe sem violações detectadas. SSR público PT/EN separado da recarga CSR privada.
+- **Isolamento e limites:** Auth/RLS/persistência reais, providers sintéticos somente em harness fora do app; fixtures removidas, job futuro cancelado sem tentativas, nenhuma conexão/publicação externa real. Owner/workspace reais e CI paralelo/main-only preservados. Publicação remota continua evidência separada.
+
+Método em [QA_OAUTH_RODADA_5.md](./QA_OAUTH_RODADA_5.md), operação em [CICLO_CREDENCIAIS_OAUTH.md](./CICLO_CREDENCIAIS_OAUTH.md). Não é homologação de provedores, garantia de ausência de bugs nem liberação comercial.
+
 ## Rótulo de portfólio não é modo de simulação
 
 `VITE_PORTFOLIO_MODE=true` exibe uma identificação pública e dentro do aplicativo. Não desativa autenticação, não remove RLS, não fornece credenciais públicas e não inventa métricas ou publicações.
@@ -108,7 +119,7 @@ Na sincronização inicial, o deploy pelo SHA foi disparado explicitamente, pois
 
 ## Banco e automações existentes
 
-A migration `20261112143126_workspace_owner_returning_visibility.sql` já havia sido aplicada no Supabase exclusivo e está versionada. As sete migrations da rodada 3 e `20261116113916_publication_reconciliation.sql` da rodada 4 também foram aplicadas, chegando a 28 no ambiente auditado; nomes/testes em [rodada 3](./QA_FUNCIONAL_RODADA_3.md#migrations-desta-rodada) e [rodada 4](./QA_RECONCILIACAO_RODADA_4.md#schema-e-operação-auditados). Não reaplique essas migrations manualmente nesse projeto. Não desative RLS para corrigir bootstrap.
+A migration `20261112143126_workspace_owner_returning_visibility.sql` já havia sido aplicada no Supabase exclusivo e está versionada. As sete migrations da rodada 3, `20261116113916_publication_reconciliation.sql` da rodada 4 e `20261116151953_oauth_credential_lifecycle.sql` da rodada 5 também foram aplicadas, chegando a **29** no ambiente auditado; nomes/testes em [rodada 3](./QA_FUNCIONAL_RODADA_3.md#migrations-desta-rodada), [rodada 4](./QA_RECONCILIACAO_RODADA_4.md#schema-e-operação-auditados) e [rodada 5](./QA_OAUTH_RODADA_5.md#schema-e-operação). Não reaplique essas migrations manualmente nesse projeto. Não desative RLS para corrigir bootstrap.
 
 Os dois crons em operação usam um segredo do Vault chamado `velt_cron_secret`, não `ALTER DATABASE`. O segredo deve ser idêntico a `CRON_SECRET` no ambiente protegido do servidor. O comando do job consulta o Vault na execução e não contém o valor em texto.
 
@@ -135,6 +146,7 @@ Há uma limitação histórica de instalação: uma migration antiga tenta `ALTE
 - [ ] Revisar LGPD, retenção/exclusão, termos, consentimentos e credenciais por ambiente/cliente.
 - [ ] Concluir tradução dos módulos avançados e auditoria manual de teclado/leitor de tela.
 - [x] Implementar o núcleo durável de reconciliação/revisão e validá-lo com banco real, concorrência e observações sintéticas — rodada 4.
+- [x] Implementar tentativas OAuth single-use, refresh concorrente/versionado e primeiro vínculo GBP; validar com SQL/roles reais, processos independentes e navegador — rodada 5.
 - [ ] Homologar reconciliação/recuperação externamente e sua operação contínua; não republicar automaticamente um item possivelmente aceito.
 - [ ] Monitorar crons, filas paradas, erros, quotas e custo. Definir suporte e resposta a incidentes.
 - [ ] Desligar o rótulo de portfólio somente quando a liberação comercial estiver aprovada.

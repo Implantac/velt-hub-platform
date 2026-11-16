@@ -23,6 +23,7 @@
  */
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { invalidateTokenVersion } from "@/lib/oauth/store.server";
 import { getFreshToken } from "@/lib/oauth/refresh.server";
 import { InsightAuthError, InsightRateLimitError, collectorFor } from "./insights.server";
 import { EMPTY_METRICS, mergeCumulative, type CanonicalMetrics } from "./normalize";
@@ -95,9 +96,11 @@ async function syncChannel(
   }
 
   let accessToken: string;
+  let tokenVersion: string;
   try {
     const fresh = await getFreshToken(channel.id, channel.platform);
     accessToken = fresh.accessToken;
+    tokenVersion = fresh.version;
   } catch (err) {
     return {
       postsMeasured: 0,
@@ -139,14 +142,22 @@ async function syncChannel(
         };
       }
       if (err instanceof InsightAuthError) {
-        await supabaseAdmin
-          .from("channels")
-          .update({
-            status: "expired",
-            metadata: { ...(channel.metadata ?? {}), sync_error: "token expirado" },
-          })
-          .eq("id", channel.id);
-        return { postsMeasured: measured, snapshotsWritten: written, error: err.message };
+        try {
+          await invalidateTokenVersion(channel.id, tokenVersion, "provider_unauthorized");
+        } catch {
+          return {
+            postsMeasured: measured,
+            snapshotsWritten: written,
+            error:
+              "Falha de autenticação; não foi possível confirmar o estado da autorização no banco.",
+          };
+        }
+        return {
+          postsMeasured: measured,
+          snapshotsWritten: written,
+          error:
+            "O provedor recusou a credencial usada nesta coleta. Atualize o canal antes de tentar novamente.",
+        };
       }
       // Per-post failure: log and continue with the next post.
       console.warn(`[analytics] post ${job.external_post_id} failed: ${(err as Error).message}`);

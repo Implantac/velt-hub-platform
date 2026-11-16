@@ -77,7 +77,8 @@ export function useChannelsPage() {
   );
 
   const connectMut = useWorkspaceMutation(
-    async (providerId: string) => connect({ data: { workspaceId: q.wsId!, provider: providerId } }),
+    async ({ provider, channelId }: { provider: string; channelId?: string }) =>
+      connect({ data: { workspaceId: q.wsId!, provider, channelId } }),
     {
       onSuccess: (res) => {
         window.location.href = res.url;
