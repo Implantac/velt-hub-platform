@@ -137,7 +137,10 @@ function LoginPage() {
   }
 
   return (
-    <div className="relative grid min-h-screen place-items-center px-4 py-12 overflow-hidden">
+    <main
+      aria-labelledby="login-heading"
+      className="relative grid min-h-screen place-items-center px-4 py-12"
+    >
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_50%_0%,oklch(0.72_0.2_285_/_0.15),transparent_50%)]" />
 
       <div className="w-full max-w-md card-premium p-8 sm:p-10 animate-rise-in">
@@ -152,7 +155,10 @@ function LoginPage() {
         </div>
 
         <div className="mb-8 space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          <h1
+            id="login-heading"
+            className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
+          >
             {resetMode === "update"
               ? t("auth.resetPasswordTitle")
               : resetMode === "request"
@@ -361,7 +367,7 @@ function LoginPage() {
           </p>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 

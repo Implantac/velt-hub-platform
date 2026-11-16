@@ -83,7 +83,8 @@
     "featuresHeading": "Tools to publish and track results",
     "ctaTitleStart": "Start organizing your",
     "ctaTitleHighlight": "digital presence",
-    "ctaDesc": "Connect a channel, prepare your first post, and see the results. No credit card required."
+    "ctaDesc": "Connect a channel, prepare your first post, and see the results. No credit card required.",
+    "accountNavigation": "Account access"
   },
   "auth": {
     "loginTitle": "Welcome back",
@@ -103,7 +104,7 @@
     "resetEmailFailed": "We couldn’t send the link right now. Please try again.",
     "backToLogin": "Back to sign in",
     "checkEmailTitle": "Confirm your email",
-    "checkEmailBody": "We sent a link to {email}. Open your inbox to confirm your account and continue.",
+    "checkEmailBody": "We sent a link to {{email}}. Open your inbox to confirm your account and continue.",
     "resendConfirmation": "Resend confirmation email",
     "confirmationResent": "If this email is awaiting confirmation, we’ll send a new link.",
     "invalidCredentials": "Email or password is incorrect. Check your details and try again.",
@@ -182,7 +183,10 @@
   },
   "notifications": {
     "title": "Notifications",
-    "empty": "No activity yet."
+    "empty": "No activity yet.",
+    "withActivity_one": "Notifications: {{displayedCount}} recent activity",
+    "withActivity_other": "Notifications: {{displayedCount}} recent activities",
+    "withActivity": "Notifications: {{displayedCount}} recent activities"
   },
   "onboarding": {
     "skip": "Not now",
@@ -631,7 +635,42 @@
     "reviewClosed": "Review closed and audited, without resending or marking as published.",
     "noCheckDue": "No check is available yet. Wait for the indicated interval and refresh the queue.",
     "checkedSummary": "Provider queries: {{queries}} · {{confirmed}} confirmed, {{pending}} awaiting confirmation, {{review}} for review; {{requeued}} unsent attempt(s) recovered.",
-    "legacyReferenceHelp": "Legacy reference without a validated type. It may identify an upload/container, not a public post. Manual provider review is required."
+    "legacyReferenceHelp": "Legacy reference without a validated type. It may identify an upload/container, not a public post. Manual provider review is required.",
+    "configurationTitle": "Provider configuration",
+    "configurationSummary": "Configuration available: {{count}} of {{total}} implemented integrations.",
+    "configurationEmpty": "No integrations were reported. Check the configuration before trying to schedule.",
+    "configurationScope": "Configuration does not confirm OAuth access, permissions or provider approval. Your channels are checked in the scheduling form.",
+    "configurationDetails": "View requirements by platform",
+    "configurationAvailable": "Configuration found",
+    "deliveryHelpTitle": "How delivery and confirmation work",
+    "reason_unknown": "Channel requirements need to be checked",
+    "preparation": {
+      "readonly": {
+        "title": "You have read-only access",
+        "body": "You can follow the queue. Ask the owner for editing access to create or change scheduled posts."
+      },
+      "draft": {
+        "title": "Start with a draft",
+        "body": "Save content before choosing when and where to send it. Saving a draft does not publish anything to social networks.",
+        "action": "Create a draft"
+      },
+      "channels": {
+        "title": "A publishing channel is needed",
+        "action": "View channels and requirements",
+        "none": "Connect a channel in Channels. Manual registration only organizes a profile and does not enable publishing.",
+        "oauth": "The registered channels need valid OAuth authorization. Open Channels to connect or reauthorize; manual registration does not enable delivery.",
+        "environment": "Provider configuration is still pending in VELT. The service operator needs to complete it; registering another profile will not resolve this step.",
+        "location": "Choose and confirm the Google Business location in Channels before scheduling.",
+        "unsupported": "Automated publishing is not implemented for the registered channels. Check the available options in Channels.",
+        "direct_post": "TikTok inbox mode does not publish automatically. Direct Post must be enabled and authorized.",
+        "other": "Check the reason shown for each channel. Open Channels to review authorization and configuration requirements."
+      },
+      "ready": {
+        "title": "Choose what to schedule",
+        "body_one": "There is {{count}} channel available to select. Your selection will be checked again when you confirm the queue entry.",
+        "body_other": "There are {{count}} channels available to select. Your selection will be checked again when you confirm the queue entry."
+      }
+    }
   },
   "opportunitySource": {
     "title": "Example catalog, not live market research",

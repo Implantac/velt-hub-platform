@@ -83,7 +83,8 @@
     "featuresHeading": "As ferramentas para publicar e acompanhar resultados",
     "ctaTitleStart": "Comece a organizar sua presença",
     "ctaTitleHighlight": "digital",
-    "ctaDesc": "Conecte um canal, prepare seu primeiro conteúdo e veja os resultados. Sem cartão de crédito."
+    "ctaDesc": "Conecte um canal, prepare seu primeiro conteúdo e veja os resultados. Sem cartão de crédito.",
+    "accountNavigation": "Acesso à conta"
   },
   "auth": {
     "loginTitle": "Bem-vindo de volta",
@@ -103,7 +104,7 @@
     "resetEmailFailed": "Não foi possível enviar o link agora. Tente novamente.",
     "backToLogin": "Voltar para entrar",
     "checkEmailTitle": "Confirme seu e-mail",
-    "checkEmailBody": "Enviamos um link para {email}. Abra sua caixa de entrada para confirmar a conta e continuar.",
+    "checkEmailBody": "Enviamos um link para {{email}}. Abra sua caixa de entrada para confirmar a conta e continuar.",
     "resendConfirmation": "Reenviar e-mail de confirmação",
     "confirmationResent": "Se este e-mail estiver aguardando confirmação, enviaremos um novo link.",
     "invalidCredentials": "E-mail ou senha incorretos. Confira os dados e tente novamente.",
@@ -182,7 +183,10 @@
   },
   "notifications": {
     "title": "Notificações",
-    "empty": "Nenhuma atividade ainda."
+    "empty": "Nenhuma atividade ainda.",
+    "withActivity_one": "Notificações: {{displayedCount}} atividade recente",
+    "withActivity_other": "Notificações: {{displayedCount}} atividades recentes",
+    "withActivity": "Notificações: {{displayedCount}} atividades recentes"
   },
   "onboarding": {
     "skip": "Agora não",
@@ -631,7 +635,42 @@
     "reviewClosed": "Revisão encerrada e registrada, sem reenviar nem marcar como publicado.",
     "noCheckDue": "Nenhuma consulta disponível agora. Aguarde o intervalo indicado e atualize a fila.",
     "checkedSummary": "Consulta(s) ao provedor: {{queries}} · {{confirmed}} confirmada(s), {{pending}} aguardando, {{review}} para revisão; {{requeued}} tentativa(s) sem envio recuperada(s).",
-    "legacyReferenceHelp": "Referência legada sem tipo validado. Pode ser um upload/container, não um post público. A conferência deve ser manual."
+    "legacyReferenceHelp": "Referência legada sem tipo validado. Pode ser um upload/container, não um post público. A conferência deve ser manual.",
+    "configurationTitle": "Configuração dos provedores",
+    "configurationSummary": "Configuração disponível: {{count}} de {{total}} integrações implementadas.",
+    "configurationEmpty": "Nenhuma integração foi informada. Confira a configuração antes de tentar agendar.",
+    "configurationScope": "Configuração não confirma conexão OAuth, permissões ou aprovação do provedor. A disponibilidade dos seus canais é verificada no formulário.",
+    "configurationDetails": "Ver requisitos por plataforma",
+    "configurationAvailable": "Configuração encontrada",
+    "deliveryHelpTitle": "Como o envio e a confirmação funcionam",
+    "reason_unknown": "Requisitos do canal precisam ser verificados",
+    "preparation": {
+      "readonly": {
+        "title": "Você está em modo de consulta",
+        "body": "Você pode acompanhar a fila. Para criar ou alterar agendamentos, peça acesso de edição ao proprietário."
+      },
+      "draft": {
+        "title": "Comece por um rascunho",
+        "body": "Salve um conteúdo antes de escolher quando e onde enviá-lo. Salvar o rascunho não publica nada nas redes.",
+        "action": "Criar rascunho"
+      },
+      "channels": {
+        "title": "Falta um canal disponível",
+        "action": "Ver canais e requisitos",
+        "none": "Conecte um canal em Canais. Um cadastro manual apenas organiza o perfil e não libera publicação.",
+        "oauth": "Os canais cadastrados precisam de autorização OAuth válida. Abra Canais para conectar ou reautorizar; cadastro manual não habilita envio.",
+        "environment": "A configuração do provedor ainda está pendente no VELT. O responsável pelo serviço precisa concluí-la; cadastrar outro perfil não resolve essa etapa.",
+        "location": "Selecione e confirme a unidade do Google Business em Canais antes de agendar.",
+        "unsupported": "A publicação automática não está implementada para os canais cadastrados. Confira as opções disponíveis em Canais.",
+        "direct_post": "O modo caixa de entrada do TikTok não publica automaticamente. É necessário Direct Post habilitado e autorizado.",
+        "other": "Confira o motivo indicado em cada canal. Abra Canais para verificar autorização e requisitos de configuração."
+      },
+      "ready": {
+        "title": "Escolha o que deseja agendar",
+        "body_one": "Há {{count}} canal disponível para seleção. A seleção será verificada novamente ao confirmar a entrada na fila.",
+        "body_other": "Há {{count}} canais disponíveis para seleção. A seleção será verificada novamente ao confirmar a entrada na fila."
+      }
+    }
   },
   "opportunitySource": {
     "title": "Catálogo de exemplos, não pesquisa de mercado ao vivo",

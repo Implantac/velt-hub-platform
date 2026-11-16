@@ -138,13 +138,18 @@ function SchedulerPageWorkspace() {
           subtitle={t("scheduler.subtitle")}
         />
 
-        <PublishCapabilityStrip />
         <WorkspaceAccessNotice access={access} />
-        <p className="text-xs text-muted-foreground">{t("access.queueHelp")}</p>
-        <p className="rounded-lg border border-border/60 bg-card/40 p-4 text-sm leading-relaxed text-muted-foreground">
-          {t("scheduler.reconciliationHelp")}
-        </p>
         <ScheduleComposer canEdit={access.canEdit} />
+        <PublishCapabilityStrip />
+        <details className="rounded-xl border border-border/60 bg-card/40 px-4">
+          <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            {t("scheduler.deliveryHelpTitle")}
+          </summary>
+          <div className="space-y-3 pb-4 text-sm leading-relaxed text-muted-foreground">
+            <p>{t("access.queueHelp")}</p>
+            <p>{t("scheduler.reconciliationHelp")}</p>
+          </div>
+        </details>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <div className="space-y-3">

@@ -58,19 +58,25 @@ export function NotificationDrawer({ workspaceId }: { workspaceId: string | unde
   }, [workspaceId, q]);
 
   const events = q.data ?? [];
-  const unread = events.length;
+  // These are recent events, not a persisted unread counter.
+  const eventCount = events.length;
+  const displayedCount = eventCount > 9 ? "9+" : String(eventCount);
 
   return (
     <Sheet>
       <SheetTrigger asChild>
         <button
           className="relative grid size-9 place-items-center rounded-lg border border-border/60 bg-card/60 text-muted-foreground transition hover:bg-card hover:text-foreground"
-          aria-label={t("notifications.title", "Notificações")}
+          aria-label={
+            eventCount > 0
+              ? t("notifications.withActivity", { count: eventCount, displayedCount })
+              : t("notifications.title", "Notificações")
+          }
         >
-          <Bell className="size-4" />
-          {unread > 0 && (
+          <Bell aria-hidden="true" className="size-4" />
+          {eventCount > 0 && (
             <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-              {unread > 9 ? "9+" : unread}
+              {displayedCount}
             </span>
           )}
         </button>

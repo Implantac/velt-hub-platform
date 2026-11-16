@@ -1,16 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, CheckCircle2, FlaskConical, Loader2, XCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { GrowthService } from "@/lib/services";
-import { PLATFORM_RULES, type PlatformId } from "@/lib/growth/platform-rules";
-
-interface Capability {
-  platform: string;
-  implemented: boolean;
-  credentialsReady: boolean;
-  missingEnv: string[];
-}
+import { PublishConfiguration, type PublishingCapability } from "./PublishConfiguration";
 
 /** Configuration readiness is not external-provider approval or homologation. */
 export function PublishCapabilityStrip() {
@@ -20,7 +13,11 @@ export function PublishCapabilityStrip() {
     queryKey: ["publish-caps"],
     queryFn: async () => {
       const r = await fetchCaps();
-      return r as unknown as { platforms: Capability[]; simulated: boolean; readyCount: number };
+      return r as unknown as {
+        platforms: PublishingCapability[];
+        simulated: boolean;
+        readyCount: number;
+      };
     },
     staleTime: 10 * 60_000,
     retry: false,
@@ -30,7 +27,7 @@ export function PublishCapabilityStrip() {
     return (
       <p role="alert" className="text-sm text-muted-foreground">
         {t("scheduler.capabilityError")}{" "}
-        <button type="button" onClick={() => void q.refetch()} className="underline">
+        <button type="button" onClick={() => void q.refetch()} className="min-h-11 underline">
           {t("common.tryAgain")}
         </button>
       </p>
@@ -43,44 +40,5 @@ export function PublishCapabilityStrip() {
       </p>
     );
 
-  const { platforms, simulated } = q.data;
-  const ready = platforms.filter((p) => p.implemented && p.credentialsReady);
-  const needsCreds = platforms.filter((p) => p.implemented && !p.credentialsReady);
-  const notImplemented = platforms.filter((p) => !p.implemented);
-
-  return (
-    <div className="section-card flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-xs">
-      <span className="font-medium text-muted-foreground">{t("scheduler.capabilityLabel")}</span>
-      {simulated && (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-500">
-          <FlaskConical className="size-3" aria-hidden="true" />
-          {t("scheduler.simulatedWarning")}
-        </span>
-      )}
-      {ready.map((p) => (
-        <span key={p.platform} className="inline-flex items-center gap-1.5 text-emerald-500">
-          <CheckCircle2 className="size-3" aria-hidden="true" />
-          {PLATFORM_RULES[p.platform as PlatformId]?.label ?? p.platform}
-        </span>
-      ))}
-      {needsCreds.map((p) => (
-        <span
-          key={p.platform}
-          className="inline-flex items-center gap-1.5 text-amber-500"
-          title={t("scheduler.missingEnvironment", { variables: p.missingEnv.join(", ") })}
-        >
-          <AlertTriangle className="size-3" aria-hidden="true" />
-          {PLATFORM_RULES[p.platform as PlatformId]?.label ?? p.platform}
-          <span className="text-xs">{t("scheduler.configurationPending")}</span>
-        </span>
-      ))}
-      {notImplemented.map((p) => (
-        <span key={p.platform} className="inline-flex items-center gap-1.5 text-muted-foreground">
-          <XCircle className="size-3" aria-hidden="true" />
-          {PLATFORM_RULES[p.platform as PlatformId]?.label ?? p.platform}
-          <span className="text-xs">{t("scheduler.notImplemented")}</span>
-        </span>
-      ))}
-    </div>
-  );
+  return <PublishConfiguration platforms={q.data.platforms} simulated={q.data.simulated} />;
 }

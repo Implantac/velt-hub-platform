@@ -120,24 +120,29 @@ function Landing() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_55%,hsl(var(--background))_100%)]" />
       </div>
 
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+      <header className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 px-4 py-4 sm:flex sm:gap-4 sm:px-6 sm:py-6">
         <div className="flex items-center gap-2">
           <div className="grid size-9 place-items-center rounded-xl bg-gradient-brand shadow-glow">
             <Brain className="size-5 text-primary-foreground" />
           </div>
           <span className="text-lg font-semibold tracking-tight">VELT</span>
         </div>
-        <nav className="flex flex-wrap items-center justify-end gap-2 text-sm">
+        <div className="justify-self-end sm:ml-auto">
           <LanguageSwitcher compact />
+        </div>
+        <nav
+          aria-label={t("landing.accountNavigation")}
+          className="col-span-2 grid grid-cols-2 gap-2 text-sm sm:flex sm:items-center sm:justify-end"
+        >
           <Link
             to="/login"
-            className="rounded-md px-3 py-2 text-muted-foreground transition hover:text-foreground"
+            className="inline-flex min-h-11 items-center justify-center rounded-md px-3 py-2 text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             {t("common.signIn")}
           </Link>
           <Link
             to="/signup"
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground shadow-glow transition hover:opacity-90"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground shadow-glow transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {t("common.getStarted")}
             <ArrowRight className="size-3.5" />
@@ -145,25 +150,25 @@ function Landing() {
         </nav>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6">
+      <main className="mx-auto max-w-6xl px-4 sm:px-6">
         <PortfolioNotice compact />
         {/* Hero */}
-        <section className="py-24 text-center">
-          <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/60 px-4 py-1.5 text-xs text-muted-foreground backdrop-blur">
+        <section className="py-10 text-center sm:py-20 md:py-24">
+          <div className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/60 px-4 py-1.5 text-xs text-muted-foreground backdrop-blur">
             <span className="relative grid size-2 place-items-center">
               <span className="absolute inset-0 animate-ping rounded-full bg-accent/60" />
               <span className="relative size-1.5 rounded-full bg-accent" />
             </span>
             {t("landing.badge")}
           </div>
-          <h1 className="text-balance text-5xl font-bold leading-[1.05] tracking-tight md:text-7xl">
+          <h1 className="text-balance text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl md:text-7xl md:leading-[1.05]">
             {t("landing.title1")}{" "}
             <span className="text-gradient-brand">{t("landing.titleHighlight")}</span>
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg text-muted-foreground">
+          <p className="mx-auto mt-4 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg">
             {t("landing.subtitle")}
           </p>
-          <div className="mt-10 flex flex-wrap justify-center gap-3">
+          <div className="mt-6 flex flex-wrap justify-center gap-3 sm:mt-10">
             <Link
               to="/signup"
               className="inline-flex items-center gap-2 rounded-md bg-primary px-6 py-3 text-base font-medium text-primary-foreground shadow-glow transition hover:opacity-90"

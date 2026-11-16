@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useServerFn } from "@tanstack/react-start";
-import { Link } from "@tanstack/react-router";
 import { enqueuePublication, getSchedulingOptions } from "@/lib/api/scheduler.functions";
 import { useWorkspaceMutation, useWorkspaceQuery } from "@/lib/query/use-workspace-query";
 import {
@@ -11,6 +10,7 @@ import {
 } from "@/lib/scheduler/scheduling";
 import { QueryErrorState } from "@/features/shell/components/QueryErrorState";
 import { PLATFORM_RULES, type PlatformId } from "@/lib/growth/platform-rules";
+import { SchedulePreparation } from "./SchedulePreparation";
 
 export function ScheduleComposer({ canEdit }: { canEdit: boolean }) {
   const { t } = useTranslation();
@@ -66,6 +66,9 @@ export function ScheduleComposer({ canEdit }: { canEdit: boolean }) {
         {t("scheduler.composeTitle")}
       </h2>
       <p className="mt-2 text-sm text-muted-foreground">{t("scheduler.composeHint")}</p>
+      {!q.isPending && !q.isError && q.data && (
+        <SchedulePreparation options={q.data} canEdit={canEdit} />
+      )}
       {q.isPending && (
         <p role="status" className="mt-3 text-sm text-muted-foreground">
           {t("common.loading")}
@@ -151,28 +154,14 @@ export function ScheduleComposer({ canEdit }: { canEdit: boolean }) {
                     {channel.handle || "—"}
                     {!channel.eligible && (
                       <span className="ml-2 text-xs text-muted-foreground">
-                        {t(`scheduler.reason_${channel.reason}`)}
+                        {t(`scheduler.reason_${channel.reason}`, {
+                          defaultValue: t("scheduler.reason_unknown"),
+                        })}
                       </span>
                     )}
                   </span>
                 </label>
               ))}
-              {!q.isPending && !q.data?.channels.some((c) => c.eligible) && (
-                <p className="text-sm text-muted-foreground">
-                  {t("scheduler.noEligibleChannels")}{" "}
-                  <Link to="/app/channels" className="underline">
-                    {t("scheduler.openChannels")}
-                  </Link>
-                </p>
-              )}
-              {!q.isPending && q.data?.contents.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {t("scheduler.noDrafts")}{" "}
-                  <Link to="/app/content" className="underline">
-                    {t("scheduler.contentLink")}
-                  </Link>
-                </p>
-              )}
             </fieldset>
           </fieldset>
           {(validation || mutation.isError) && (

@@ -75,6 +75,16 @@ Método em [QA_OAUTH_RODADA_5.md](./QA_OAUTH_RODADA_5.md), operação em [CICLO_
 
 Detalhes em [QA_ANALYTICS_RODADA_6.md](./QA_ANALYTICS_RODADA_6.md) e contrato em [OBSERVACOES_ANALITICAS.md](./OBSERVACOES_ANALITICAS.md). Duas migrations aplicadas uma vez, 31 no total; código antigo não é compatível para coletar nesse schema. Não reabrir o recorder/DML para contornar atualização ou rollback. SHA/CI/deploy/smoke são provas operacionais separadas. O requisito de funcionamento completo continua vigente; essas evidências não encerram homologação externa, prontidão comercial ou revisão de todos os módulos.
 
+## Sétima rodada: primeira etapa de experiência profissional
+
+- **Público móvel:** cabeçalho com os dois destinos de acesso inteiros em 320px, seletor de idioma realmente compacto e hero móvel mais curto, sem retirar o aviso de portfólio ou alterar SSR/metadados.
+- **Acesso:** região principal identificada em login/cadastro/recuperação; confirmação de cadastro usa o endereço informado e quebra endereços longos sem corte. A entrega real de e-mails não foi homologada por essa mudança.
+- **Agendamento:** formulário antes da configuração técnica, orientação de próximo passo conforme papel/rascunho/canais e motivos específicos de bloqueio. Requisitos por plataforma e funcionamento da entrega continuam acessíveis em detalhes nativos por teclado. Configuração não certifica OAuth ou publicação; API/preflight/recibos e proteções do banco foram preservados.
+- **Atividade acessível:** nome do sino inclui o contador visível de eventos recentes; não inventa leitura persistente de notificações.
+- **QA local selecionado:** typecheck/lint/build, 1.306 testes/76 arquivos, auditoria de dependências de produção sem vulnerabilidades reportadas, 38 verificações públicas e 16 do agendamento com Auth/persistência reais em fixtures descartáveis. Mais quatro verificações de contrato visual da confirmação com resposta interceptada, sem cadastro/e-mail reais. Os 23 snapshots Axe selecionados terminaram sem violações detectadas; não são certificação WCAG.
+
+Método, diagnósticos e limites em [QA_UX_RODADA_7.md](./QA_UX_RODADA_7.md). Nenhuma migration, conexão/postagem social ou coleta externa positiva foi executada. Upload seguro de mídia, calendário/fila móvel, contexto/fuso/tradução do cartão de melhor horário, suporte/documentos legais/equipe e comprovação operacional permanecem frentes posteriores. Publicação remota e limpeza final têm relatório próprio; sucesso local não as comprova.
+
 ## Rótulo de portfólio não é modo de simulação
 
 `VITE_PORTFOLIO_MODE=true` exibe uma identificação pública e dentro do aplicativo. Não desativa autenticação, não remove RLS, não fornece credenciais públicas e não inventa métricas ou publicações.

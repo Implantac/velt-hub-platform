@@ -92,7 +92,10 @@ function SignupPage() {
   }
 
   return (
-    <div className="relative grid min-h-screen place-items-center px-4 py-12 overflow-hidden">
+    <main
+      aria-labelledby="signup-heading"
+      className="relative grid min-h-screen place-items-center px-4 py-12"
+    >
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_50%_100%,oklch(0.72_0.2_285_/_0.15),transparent_50%)]" />
 
       <div className="w-full max-w-md card-premium p-8 sm:p-10 animate-rise-in">
@@ -107,7 +110,10 @@ function SignupPage() {
         </div>
 
         <div className="space-y-1 mb-8">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          <h1
+            id="signup-heading"
+            className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
+          >
             {confirmationSent ? t("auth.checkEmailTitle") : t("auth.signupTitle")}
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -117,7 +123,7 @@ function SignupPage() {
 
         {confirmationSent ? (
           <div className="space-y-4" role="status" aria-live="polite">
-            <p className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-muted-foreground">
+            <p className="break-words rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-muted-foreground">
               {t("auth.checkEmailBody", { email })}
             </p>
             <button
@@ -242,6 +248,6 @@ function SignupPage() {
           </p>
         )}
       </div>
-    </div>
+    </main>
   );
 }
