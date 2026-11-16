@@ -64,6 +64,17 @@ Consulte [evidências e limites](./QA_RECONCILIACAO_RODADA_4.md) e [manual de re
 
 Método em [QA_OAUTH_RODADA_5.md](./QA_OAUTH_RODADA_5.md), operação em [CICLO_CREDENCIAIS_OAUTH.md](./CICLO_CREDENCIAIS_OAUTH.md). Não é homologação de provedores, garantia de ausência de bugs nem liberação comercial.
 
+## Sexta rodada: observações analíticas confirmadas
+
+- **Concorrência no banco:** commit versionado por canal/token/job/post; uma observação por publicação externa e dia UTC, mesmo com conteúdo reutilizado. Merge por máximos no Postgres, sem soma de releituras ou SELECT/INSERT em processos concorrentes. `captured_at`, metadata e data do canal avançam na mesma transação.
+- **Fronteiras reais:** snapshots SELECT-only para papéis de aplicação; data direta protegida inclusive contra service role e recorder legado sem EXECUTE. API exige owner/admin, RLS preserva a leitura por membership, e disconnect/refresh/reautorização/publicação alterada vencem resultados antigos.
+- **Sem falso sucesso:** erro por post é visível; observação ausente não vira zero. Gravação sem recibo válido não é contada nem repetida automaticamente. Interface PT/EN diferencia completo/parcial/erro/vazio e não mostra toast de requisição de workspace anterior.
+- **Capacidades honestas:** registry só contém coletores implementados. TikTok/Google Business per-post continuam indisponíveis, sem stubs operacionais; motivo explícito e execução mista parcial. Isso não é homologação dos quatro coletores disponíveis.
+- **Consumidores:** analytics e relatório deduplicam pela publicação externa/canal, não apenas pelo conteúdo. PDF/CSV conferidos com valores persistidos e nota metodológica; recurso oculto por RLS/inexistente retorna o mesmo 404, UUID inválido 400 e ausência de autenticação 401.
+- **Validação selecionada:** 1.242 testes/71 arquivos, 424 checks locais em nove suítes, 87 novos checks SQL remotos/rollback, 20 checks runtime/11 interleavings e 14 de navegador. Doze análises Axe sem violações detectadas; 8 + 4 processos reais nas disputas de observação. Auth/PostgREST/RLS reais, providers apenas sintéticos fora do produto, fixtures removidas e fingerprints reais preservados.
+
+Detalhes em [QA_ANALYTICS_RODADA_6.md](./QA_ANALYTICS_RODADA_6.md) e contrato em [OBSERVACOES_ANALITICAS.md](./OBSERVACOES_ANALITICAS.md). Duas migrations aplicadas uma vez, 31 no total; código antigo não é compatível para coletar nesse schema. Não reabrir o recorder/DML para contornar atualização ou rollback. SHA/CI/deploy/smoke são provas operacionais separadas. O requisito de funcionamento completo continua vigente; essas evidências não encerram homologação externa, prontidão comercial ou revisão de todos os módulos.
+
 ## Rótulo de portfólio não é modo de simulação
 
 `VITE_PORTFOLIO_MODE=true` exibe uma identificação pública e dentro do aplicativo. Não desativa autenticação, não remove RLS, não fornece credenciais públicas e não inventa métricas ou publicações.
@@ -119,7 +130,7 @@ Na sincronização inicial, o deploy pelo SHA foi disparado explicitamente, pois
 
 ## Banco e automações existentes
 
-A migration `20261112143126_workspace_owner_returning_visibility.sql` já havia sido aplicada no Supabase exclusivo e está versionada. As sete migrations da rodada 3, `20261116113916_publication_reconciliation.sql` da rodada 4 e `20261116151953_oauth_credential_lifecycle.sql` da rodada 5 também foram aplicadas, chegando a **29** no ambiente auditado; nomes/testes em [rodada 3](./QA_FUNCIONAL_RODADA_3.md#migrations-desta-rodada), [rodada 4](./QA_RECONCILIACAO_RODADA_4.md#schema-e-operação-auditados) e [rodada 5](./QA_OAUTH_RODADA_5.md#schema-e-operação). Não reaplique essas migrations manualmente nesse projeto. Não desative RLS para corrigir bootstrap.
+A migration `20261112143126_workspace_owner_returning_visibility.sql` já havia sido aplicada no Supabase exclusivo e está versionada. As sete migrations da rodada 3, `20261116113916_publication_reconciliation.sql` da rodada 4, `20261116151953_oauth_credential_lifecycle.sql` da rodada 5 e `20261116180947_atomic_analytics_observations.sql` / `20261116182153_retire_legacy_analytics_recorder.sql` da rodada 6 também foram aplicadas, chegando a **31** no ambiente auditado; nomes/testes em [rodada 3](./QA_FUNCIONAL_RODADA_3.md#migrations-desta-rodada), [rodada 4](./QA_RECONCILIACAO_RODADA_4.md#schema-e-operação-auditados), [rodada 5](./QA_OAUTH_RODADA_5.md#schema-e-operação) e [rodada 6](./QA_ANALYTICS_RODADA_6.md#schema-e-limpeza). Não reaplique essas migrations manualmente nesse projeto. Não desative RLS para corrigir bootstrap.
 
 Os dois crons em operação usam um segredo do Vault chamado `velt_cron_secret`, não `ALTER DATABASE`. O segredo deve ser idêntico a `CRON_SECRET` no ambiente protegido do servidor. O comando do job consulta o Vault na execução e não contém o valor em texto.
 
@@ -147,6 +158,7 @@ Há uma limitação histórica de instalação: uma migration antiga tenta `ALTE
 - [ ] Concluir tradução dos módulos avançados e auditoria manual de teclado/leitor de tela.
 - [x] Implementar o núcleo durável de reconciliação/revisão e validá-lo com banco real, concorrência e observações sintéticas — rodada 4.
 - [x] Implementar tentativas OAuth single-use, refresh concorrente/versionado e primeiro vínculo GBP; validar com SQL/roles reais, processos independentes e navegador — rodada 5.
+- [x] Persistir observações analíticas/data atomicamente, com merge/identidade no banco, recibo obrigatório e interface/relatórios sem falso sucesso; validar Auth/RLS/concorrência reais e navegador — rodada 6.
 - [ ] Homologar reconciliação/recuperação externamente e sua operação contínua; não republicar automaticamente um item possivelmente aceito.
 - [ ] Monitorar crons, filas paradas, erros, quotas e custo. Definir suporte e resposta a incidentes.
 - [ ] Desligar o rótulo de portfólio somente quando a liberação comercial estiver aprovada.

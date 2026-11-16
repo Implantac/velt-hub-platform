@@ -21,7 +21,7 @@ O diferencial não é ser mais um agendador de posts. É ser a camada de **julga
 | USE Brain                           | Regras determinísticas por padrão; não é IA generativa nem pesquisa de mercado ao vivo                                |
 | Oportunidades globais               | Catálogo demonstrativo identificado na interface                                                                      |
 | Publicadores sociais                | Código implementado para algumas plataformas; requer credenciais, aprovações e homologação real                       |
-| Métricas e cron                     | Infraestrutura configurada; coleta real depende de canais autorizados e publicações reais                             |
+| Métricas e cron                     | Observação/data atômicas com recibo, merge diário e resultado parcial explícito; coleta externa exige homologação     |
 | OAuth e Google Business             | Tentativas single-use, refresh versionado/lease e primeiro vínculo de unidade explícito; homologação externa pendente |
 | RLS/RBAC                            | 133 novos checks reais OAuth/rollback e concorrência entre processos; rodadas anteriores históricas; não é pentest    |
 | IA, Google login e SMTP             | Dependem de configuração/validação; Google login não é exibido sem opt-in                                             |
@@ -30,6 +30,8 @@ O diferencial não é ser mais um agendador de posts. É ser a camada de **julga
 Veja [portfólio e checklist para clientes](./docs/PORTFOLIO_E_CLIENTES.md) para escopo e pendências. A [rodada 4 de reconciliação](./docs/QA_RECONCILIACAO_RODADA_4.md) registra 978 testes/61 arquivos, 87 novos checks SQL reais, 25 checks HTTP de reconciliação, 22 de regressão funcional e 22 de navegador, com 11 análises Axe sem violações detectadas. As cinco suítes SQL locais somaram 203 checks em uma execução focada PGlite. Os 116 checks SQL reais da [rodada 3](./docs/QA_FUNCIONAL_RODADA_3.md) são históricos, não um novo run remoto. São camadas de evidência diferentes; nenhuma equivale a homologação externa.
 
 A [rodada 5 de credenciais OAuth](./docs/QA_OAUTH_RODADA_5.md) passou em **1.138 testes/66 arquivos**, **336 checks SQL locais/8 suítes**, **133 novos checks Supabase com rollback**, 25 checks runtime/12 interleavings, três disputas simultâneas entre processos e 12 checks de navegador/12 análises Axe sem violações detectadas. Tentativas single-use, refresh versionado e vínculo GBP explícito estão descritos no [manual operacional](./docs/CICLO_CREDENCIAIS_OAUTH.md). Auth/RLS e persistência são reais; respostas de provedor são sintéticas somente no harness externo. Fixtures removidas, nenhuma conexão/publicação social real. SHA/CI/deploy/smoke remotos continuam sendo evidência operacional separada.
+
+A [rodada 6 de observações analíticas](./docs/QA_ANALYTICS_RODADA_6.md) passou em **1.242 testes/71 arquivos**, **424 checks SQL locais/9 suítes**, **87 novos checks PostgreSQL remotos/rollback**, 20 checks runtime/11 interleavings e 14 checks de navegador/12 análises Axe sem violações detectadas. Oito processos gravando a primeira observação e quatro atualizando a mesma linha preservaram unicidade e máximos. Snapshot/data são uma transação, recibos desconhecidos não geram retry e o resultado fica isolado por workspace. [Contrato e operação](./docs/OBSERVACOES_ANALITICAS.md). Providers são sintéticos somente no harness; homologação e publicação remota não são inferidas desses resultados.
 
 A honestidade é um requisito de produto: a tela de Agendamento distingue configuração presente de conexão autorizada. A API exige pré-voo e conexão/token para enfileirar, mas isso não comprova validade atual do grant, aprovação do app ou visibilidade da publicação. Erros e resultados sem confirmação não são apresentados como sucesso.
 
@@ -264,7 +266,7 @@ lado de cada número. Semanas sem base de comparação mostram "novo" em vez de 
 porcentagem infinita, e uma semana sem atividade diz isso — não desenha um
 gráfico vazio.
 
-Os totais usam a última coleta cumulativa por conteúdo × canal na janela, sem somar coletas repetidas. A comparação semanal não mede apenas interações ocorridas naquela semana e o alcance agregado não representa pessoas únicas entre canais. A metodologia acompanha os arquivos.
+Os totais usam a última observação cumulativa por publicação externa × canal na janela, sem somar releituras; registros legados conservam fallback por conteúdo/canal. No dia UTC, novos contadores são máximos observados, com snapshot/data confirmados atomicamente. A comparação semanal não mede apenas interações ocorridas naquela semana e o alcance agregado não representa pessoas únicas entre canais. A metodologia acompanha os arquivos; veja [o contrato de coleta](./docs/OBSERVACOES_ANALITICAS.md).
 
 O PDF é gerado por `pdf-lib` com fontes padrão (Helvetica cobre todo o pt-BR em
 WinAnsi, verificado) e sem imagens externas: renderiza igual num servidor sem
@@ -320,7 +322,7 @@ erros de formatação que ninguém pode corrigir à mão.
 npm run test
 ```
 
-**712 testes em 56 arquivos**, verificados em 12/11/2026, cobrindo limites de plataforma, agendamento, permissões, métricas cumulativas, mídia, Brain, OAuth, relatórios, transporte HTTP e contratos de publicação. Parte usa mocks. As quatro suítes em `supabase/tests/` passaram em 116 checks reais de Postgres/RLS com rollback; a rodada autenticada no build compilado passou em 22 checks HTTP e 31 de navegador. Consulte [método, evidências e limites](./docs/QA_FUNCIONAL_RODADA_3.md); essas verificações não substituem homologação externa nem pentest.
+**1.242 testes em 71 arquivos** na rodada 6, cobrindo limites de plataforma, agendamento, permissões, métricas cumulativas/recibos, mídia, Brain, OAuth, relatórios, transporte HTTP e contratos de publicação. Parte usa mocks. As nove suítes SQL locais focadas passaram em 424 checks; 87 novos checks foram executados também no PostgreSQL remoto com rollback. Runtime compilado com Auth/RLS reais: 20 checks/11 interleavings; navegador: 14 checks e 12 análises Axe sem violações detectadas. Consulte [método, evidências e limites](./docs/QA_ANALYTICS_RODADA_6.md); são camadas diferentes e não substituem homologação externa, instalação limpa do histórico ou pentest.
 
 ---
 

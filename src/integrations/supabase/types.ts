@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           captured_at: string
           channel_id: string | null
+          collection_day: string | null
           content_id: string | null
           created_at: string
           id: string
@@ -27,6 +28,7 @@ export type Database = {
         Insert: {
           captured_at?: string
           channel_id?: string | null
+          collection_day?: string | null
           content_id?: string | null
           created_at?: string
           id?: string
@@ -36,6 +38,7 @@ export type Database = {
         Update: {
           captured_at?: string
           channel_id?: string | null
+          collection_day?: string | null
           content_id?: string | null
           created_at?: string
           id?: string
@@ -2200,6 +2203,20 @@ export type Database = {
       }
     }
     Functions: {
+      commit_analytics_observation: {
+        Args: {
+          _channel_id: string
+          _expected_version: string
+          _job_id: string
+          _external_post_id: string
+          _metrics: Json
+        }
+        Returns: Json
+      }
+      merge_analytics_observation_metrics: {
+        Args: { _previous: Json; _next: Json }
+        Returns: Json
+      }
       register_oauth_authorization: {
         Args: {
           _workspace_id: string
@@ -2468,6 +2485,7 @@ export type Database = {
         Returns: {
           captured_at: string
           channel_id: string | null
+          collection_day: string | null
           content_id: string | null
           created_at: string
           id: string

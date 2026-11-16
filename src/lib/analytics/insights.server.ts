@@ -1,27 +1,13 @@
 /**
- * VELT — Per-post insight collectors (server-only).
- *
- * Each collector takes a published post (external id + channel) and returns
- * canonical metrics. The contract is deliberately narrow:
- *
- *   collect(ctx) -> { metrics, accountFollowers? } | null
- *
- * `null` means "this platform cannot report metrics for this post" — never an
- * error, because a missing metric is not a failure of the sync run. Throwing is
- * reserved for things the operator must act on (expired token, revoked scope),
- * which the caller turns into an actionable `last_error` on the channel.
+ * Per-post provider reads. Missing observations are null, never invented zeros.
+ * Required reads fail visibly; optional account reads can return a partial result.
+ * Provider approval/scopes still require external homologation, not just these parsers.
  */
-
 import { metaGraphBase } from "@/lib/oauth/meta-version.server";
 import type { CanonicalMetrics } from "./normalize";
-import {
-  fromFacebook,
-  fromInstagram,
-  fromInstagramAccount,
-  fromLinkedIn,
-  fromYouTube,
-} from "./normalize";
+import { fromFacebook, fromInstagram, fromLinkedIn, fromYouTube } from "./normalize";
 
+type Raw = Record<string, unknown>;
 export interface InsightContext {
   platform: string;
   externalPostId: string;
@@ -29,58 +15,101 @@ export interface InsightContext {
   channelConfig: Record<string, unknown>;
   channelExternalId?: string | null;
 }
-
 export interface InsightResult {
   metrics: CanonicalMetrics;
-  /** Account-level follower count, when the platform reports it per post sync. */
   accountFollowers?: number;
+  warnings?: Array<"additional_metrics_unavailable">;
 }
-
-/** Raised when the platform refuses due to credentials — operator must act. */
 export class InsightAuthError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "InsightAuthError";
   }
 }
-
-/** Raised when the platform rate-limits us — back off and retry later. */
 export class InsightRateLimitError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "InsightRateLimitError";
   }
 }
-
-async function graphJson<T>(url: URL): Promise<T> {
-  const res = await fetch(url);
-  const text = await res.text();
-  let json: unknown = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    /* keep raw text for the error message */
+export class InsightMetricsError extends Error {
+  constructor() {
+    super("O provedor retornou contadores ou uma resposta de métricas inválidos.");
+    this.name = "InsightMetricsError";
   }
+}
+const object = (value: unknown): Raw | null =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Raw) : null;
 
-  if (!res.ok) {
-    const err = (json as { error?: { message?: string; code?: number } })?.error;
-    const code = err?.code;
-    if (res.status === 401 || code === 190) {
-      throw new InsightAuthError(
-        `Token sem permissão para ler insights: ${err?.message ?? res.status}. Reconecte o canal.`,
-      );
-    }
-    if (res.status === 429 || code === 4 || code === 17) {
-      throw new InsightRateLimitError(`Rate limit do provedor: ${err?.message ?? res.status}`);
-    }
-    throw new Error(`Falha ao ler insights (${res.status}): ${err?.message ?? text.slice(0, 200)}`);
+/** Reject malformed upstream counters before a permissive normalizer could turn them into zero. */
+function counter(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" && !(typeof value === "string" && /^\d+$/.test(value)))
+    throw new InsightMetricsError();
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < 0) throw new InsightMetricsError();
+  return n;
+}
+function hasCounters(raw: Raw, keys: readonly string[]): boolean {
+  let observed = false;
+  for (const key of keys) if (counter(raw[key]) !== undefined) observed = true;
+  return observed;
+}
+function hasInsights(raw: Raw, names: readonly string[]): boolean {
+  if (raw.data === undefined) return false;
+  if (!Array.isArray(raw.data)) throw new InsightMetricsError();
+  let observed = false;
+  for (const item of raw.data) {
+    const metric = object(item);
+    if (!metric || !names.includes(String(metric.name))) continue;
+    const first = Array.isArray(metric.values) ? object(metric.values[0]) : null;
+    const value = first?.value ?? object(metric.total_value)?.value ?? metric.total_value;
+    if (metric.name === "post_reactions_by_type_total" && object(value)) {
+      for (const n of Object.values(value as Raw)) if (counter(n) !== undefined) observed = true;
+    } else if (counter(value) !== undefined) observed = true;
   }
-  return json as T;
+  return observed;
 }
 
-/* ------------------------------------------------------------------ */
-/* Instagram                                                           */
-/* ------------------------------------------------------------------ */
+/** Credentials belong in headers, and no upstream body/URL belongs in a public error. */
+async function readJson(
+  url: URL | string,
+  accessToken: string,
+  headers: Record<string, string> = {},
+): Promise<Raw> {
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}`, ...headers },
+    signal: AbortSignal.timeout(15_000),
+  });
+  let json: Raw | null = null;
+  try {
+    json = object(JSON.parse(await response.text()));
+  } catch {
+    /* safe error below */
+  }
+  if (!response.ok) {
+    const error = object(json?.error);
+    const quota =
+      Array.isArray(error?.errors) &&
+      error.errors.some((e) =>
+        [
+          "quotaExceeded",
+          "dailyLimitExceeded",
+          "rateLimitExceeded",
+          "userRateLimitExceeded",
+        ].includes(String(object(e)?.reason)),
+      );
+    if (response.status === 429 || quota || error?.code === 4 || error?.code === 17) {
+      throw new InsightRateLimitError("O provedor limitou a leitura de métricas.");
+    }
+    if (response.status === 401 || response.status === 403 || error?.code === 190) {
+      throw new InsightAuthError("O provedor recusou a autorização para ler métricas.");
+    }
+    throw new Error("Não foi possível ler as métricas no provedor.");
+  }
+  if (!json || json.error) throw new InsightMetricsError();
+  return json;
+}
 
 const IG_INSIGHT_METRICS = [
   "impressions",
@@ -90,53 +119,39 @@ const IG_INSIGHT_METRICS = [
   "total_interactions",
   "plays",
 ];
-
-export async function collectInstagram(ctx: InsightContext): Promise<InsightResult> {
-  // Bearer auth is accepted by the Graph API and is preferred over query params
-  // so the token never lands in a URL that could be logged.
+export async function collectInstagram(ctx: InsightContext): Promise<InsightResult | null> {
   const url = new URL(`${metaGraphBase()}/${ctx.externalPostId}/insights`);
   url.searchParams.set("metric", IG_INSIGHT_METRICS.join(","));
-  url.searchParams.set("access_token", ctx.accessToken);
-
-  // Basic counters live on the media node itself.
   const mediaUrl = new URL(`${metaGraphBase()}/${ctx.externalPostId}`);
   mediaUrl.searchParams.set("fields", "like_count,comments_count,media_type,timestamp");
-  mediaUrl.searchParams.set("access_token", ctx.accessToken);
-
   const [insights, media] = await Promise.all([
-    graphJson<Record<string, unknown>>(url).catch((err) => {
-      // Insights require a Business/Creator account. A personal account is not a
-      // sync failure — it simply has no data source.
-      if (err instanceof InsightAuthError) return { data: [] } as Record<string, unknown>;
-      throw err;
-    }),
-    graphJson<Record<string, unknown>>(mediaUrl),
+    readJson(url, ctx.accessToken),
+    readJson(mediaUrl, ctx.accessToken),
   ]);
-
-  const metrics = fromInstagram(media, insights);
-
+  const insightObserved = hasInsights(insights, [...IG_INSIGHT_METRICS, "views", "video_views"]);
+  const mediaObserved = hasCounters(media, ["like_count", "comments_count"]);
+  if (!insightObserved && !mediaObserved) return null;
+  const warnings: NonNullable<InsightResult["warnings"]> = insightObserved
+    ? []
+    : ["additional_metrics_unavailable"];
   let accountFollowers: number | undefined;
-  const igUserId =
-    (ctx.channelConfig.ig_user_id as string | undefined) ?? ctx.channelExternalId ?? undefined;
-  if (igUserId) {
+  const igUserId = ctx.channelConfig.ig_user_id ?? ctx.channelExternalId;
+  if (typeof igUserId === "string" && igUserId) {
     try {
-      const accUrl = new URL(`${metaGraphBase()}/${igUserId}`);
-      accUrl.searchParams.set("fields", "followers_count");
-      accUrl.searchParams.set("access_token", ctx.accessToken);
-      const acc = await graphJson<{ followers_count?: number }>(accUrl);
-      accountFollowers = Number(acc.followers_count ?? 0) || undefined;
-      void fromInstagramAccount; // account-insight parser kept for future use
+      const accountUrl = new URL(`${metaGraphBase()}/${igUserId}`);
+      accountUrl.searchParams.set("fields", "followers_count");
+      accountFollowers = counter((await readJson(accountUrl, ctx.accessToken)).followers_count);
+      if (accountFollowers === undefined) warnings.push("additional_metrics_unavailable");
     } catch {
-      // Follower count is a nice-to-have; never fail the sync over it.
+      warnings.push("additional_metrics_unavailable");
     }
   }
-
-  return { metrics, accountFollowers };
+  return {
+    metrics: fromInstagram(media, insights),
+    accountFollowers,
+    warnings: [...new Set(warnings)],
+  };
 }
-
-/* ------------------------------------------------------------------ */
-/* Facebook Page                                                       */
-/* ------------------------------------------------------------------ */
 
 const FB_INSIGHT_METRICS = [
   "post_impressions",
@@ -146,192 +161,126 @@ const FB_INSIGHT_METRICS = [
   "post_video_views",
   "post_reactions_by_type_total",
 ];
-
-export async function collectFacebook(ctx: InsightContext): Promise<InsightResult> {
+export async function collectFacebook(ctx: InsightContext): Promise<InsightResult | null> {
   const url = new URL(`${metaGraphBase()}/${ctx.externalPostId}/insights`);
   url.searchParams.set("metric", FB_INSIGHT_METRICS.join(","));
-  url.searchParams.set("access_token", ctx.accessToken);
-
   const postUrl = new URL(`${metaGraphBase()}/${ctx.externalPostId}`);
   postUrl.searchParams.set("fields", "likes.summary(true),comments.summary(true),shares");
-  postUrl.searchParams.set("access_token", ctx.accessToken);
-
   const [insights, post] = await Promise.all([
-    graphJson<Record<string, unknown>>(url).catch(() => ({ data: [] }) as Record<string, unknown>),
-    graphJson<Record<string, unknown>>(postUrl),
+    readJson(url, ctx.accessToken),
+    readJson(postUrl, ctx.accessToken),
   ]);
-
-  // Flatten Facebook's summary objects before normalisation.
-  const flattened: Record<string, unknown> = {
-    likes_count: (post.likes as { summary?: { total_count?: number } } | undefined)?.summary
-      ?.total_count,
-    comments_count: (post.comments as { summary?: { total_count?: number } } | undefined)?.summary
-      ?.total_count,
-    shares_count: (post.shares as { count?: number } | undefined)?.count,
+  const flattened: Raw = {
+    likes_count: object(object(post.likes)?.summary)?.total_count,
+    comments_count: object(object(post.comments)?.summary)?.total_count,
+    shares_count: object(post.shares)?.count,
   };
-
-  return { metrics: fromFacebook(flattened, insights) };
+  const insightObserved = hasInsights(insights, FB_INSIGHT_METRICS);
+  const postObserved = hasCounters(flattened, ["likes_count", "comments_count", "shares_count"]);
+  if (!insightObserved && !postObserved) return null;
+  return {
+    metrics: fromFacebook(flattened, insights),
+    warnings: insightObserved ? [] : ["additional_metrics_unavailable"],
+  };
 }
 
-/* ------------------------------------------------------------------ */
-/* YouTube                                                             */
-/* ------------------------------------------------------------------ */
-
-export async function collectYouTube(ctx: InsightContext): Promise<InsightResult> {
+export async function collectYouTube(ctx: InsightContext): Promise<InsightResult | null> {
   const url = new URL("https://www.googleapis.com/youtube/v3/videos");
   url.searchParams.set("part", "statistics");
   url.searchParams.set("id", ctx.externalPostId);
-
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${ctx.accessToken}` },
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      throw new InsightAuthError(`YouTube recusou a leitura de estatísticas (${res.status}).`);
+  const json = await readJson(url, ctx.accessToken);
+  if (!Array.isArray(json.items)) throw new InsightMetricsError();
+  const statistics = object(object(json.items[0])?.statistics);
+  if (
+    !statistics ||
+    !hasCounters(statistics, ["viewCount", "likeCount", "commentCount", "favoriteCount"])
+  )
+    return null;
+  let channelStats: Raw | undefined;
+  const warnings: NonNullable<InsightResult["warnings"]> = [];
+  if (ctx.channelExternalId) {
+    try {
+      const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
+      channelUrl.searchParams.set("part", "statistics");
+      channelUrl.searchParams.set("id", ctx.channelExternalId);
+      const channel = await readJson(channelUrl, ctx.accessToken);
+      channelStats = Array.isArray(channel.items)
+        ? (object(object(channel.items[0])?.statistics) ?? undefined)
+        : undefined;
+      if (counter(channelStats?.subscriberCount) === undefined)
+        warnings.push("additional_metrics_unavailable");
+    } catch {
+      channelStats = undefined;
+      warnings.push("additional_metrics_unavailable");
     }
-    if (res.status === 429) throw new InsightRateLimitError("Cota do YouTube esgotada.");
-    throw new Error(`YouTube ${res.status}: ${text.slice(0, 200)}`);
   }
-
-  const json = JSON.parse(text) as { items?: Array<{ statistics?: Record<string, unknown> }> };
-  const stats = json.items?.[0]?.statistics;
-  if (!stats) return { metrics: fromYouTube({}) };
-
-  let channelStats: Record<string, unknown> | undefined;
-  try {
-    const channelId = String(stats.channelId ?? ctx.channelExternalId ?? "");
-    if (channelId) {
-      const chUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
-      chUrl.searchParams.set("part", "statistics");
-      chUrl.searchParams.set("id", channelId);
-      const chRes = await fetch(chUrl, { headers: { Authorization: `Bearer ${ctx.accessToken}` } });
-      if (chRes.ok) {
-        const chJson = (await chRes.json()) as {
-          items?: Array<{ statistics?: Record<string, unknown> }>;
-        };
-        channelStats = chJson.items?.[0]?.statistics;
-      }
-    }
-  } catch {
-    /* followers are optional */
-  }
-
   return {
-    metrics: fromYouTube(stats, channelStats),
-    accountFollowers: channelStats
-      ? Number(channelStats.subscriberCount ?? 0) || undefined
-      : undefined,
+    metrics: fromYouTube(statistics, channelStats),
+    accountFollowers: counter(channelStats?.subscriberCount),
+    warnings,
   };
 }
-
-/* ------------------------------------------------------------------ */
-/* LinkedIn                                                            */
-/* ------------------------------------------------------------------ */
 
 const LINKEDIN_VERSION = "202601";
-
-export async function collectLinkedIn(ctx: InsightContext): Promise<InsightResult> {
-  // Share statistics are scoped to the organisation; personal posts expose only
-  // social actions (likes/comments).
-  const orgId = ctx.channelConfig.organization_id as string | undefined;
-  const headers = {
-    Authorization: `Bearer ${ctx.accessToken}`,
-    "LinkedIn-Version": LINKEDIN_VERSION,
-    "X-Restli-Protocol-Version": "2.0.0",
-  };
-
-  const socialRes = await fetch(
+export async function collectLinkedIn(ctx: InsightContext): Promise<InsightResult | null> {
+  const headers = { "LinkedIn-Version": LINKEDIN_VERSION, "X-Restli-Protocol-Version": "2.0.0" };
+  const social = await readJson(
     `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(ctx.externalPostId)}`,
-    { headers },
+    ctx.accessToken,
+    headers,
   );
-
-  if (socialRes.status === 401 || socialRes.status === 403) {
-    throw new InsightAuthError("LinkedIn recusou a leitura de métricas — reconecte o canal.");
-  }
-  if (socialRes.status === 429) throw new InsightRateLimitError("Rate limit do LinkedIn.");
-
-  let stats: Record<string, unknown> = {};
-  if (socialRes.ok) {
-    const json = (await socialRes.json()) as {
-      likesSummary?: { totalLikes?: number };
-      commentsSummary?: { totalFirstLevelComments?: number };
-    };
-    stats = {
-      likeCount: json.likesSummary?.totalLikes ?? 0,
-      commentCount: json.commentsSummary?.totalFirstLevelComments ?? 0,
-    };
-  }
-
-  if (orgId) {
-    const shareUrn = encodeURIComponent(ctx.externalPostId);
-    const statUrl =
-      `https://api.linkedin.com/rest/organizationalEntityShareStatistics` +
-      `?q=organizationalEntity&organizationalEntity=${encodeURIComponent(`urn:li:organization:${orgId}`)}` +
-      `&shares=List(${shareUrn})`;
-    const statRes = await fetch(statUrl, { headers });
-    if (statRes.ok) {
-      const json = (await statRes.json()) as {
-        elements?: Array<{
-          totalShareStatistics?: Record<string, number>;
-        }>;
-      };
-      const s = json.elements?.[0]?.totalShareStatistics ?? {};
+  let stats: Raw = {
+    likeCount: object(social.likesSummary)?.totalLikes,
+    commentCount: object(social.commentsSummary)?.totalFirstLevelComments,
+  };
+  const socialObserved = hasCounters(stats, ["likeCount", "commentCount"]);
+  const orgId = ctx.channelConfig.organization_id;
+  const warnings: NonNullable<InsightResult["warnings"]> = [];
+  let orgObserved = false;
+  if (typeof orgId === "string" && orgId) {
+    const url = new URL("https://api.linkedin.com/rest/organizationalEntityShareStatistics");
+    url.searchParams.set("q", "organizationalEntity");
+    url.searchParams.set("organizationalEntity", `urn:li:organization:${orgId}`);
+    url.searchParams.set("shares", `List(${ctx.externalPostId})`);
+    const json = await readJson(url, ctx.accessToken, headers);
+    const org = Array.isArray(json.elements)
+      ? object(object(json.elements[0])?.totalShareStatistics)
+      : null;
+    if (org) {
+      const keys = [
+        "likeCount",
+        "commentCount",
+        "shareCount",
+        "clickCount",
+        "impressionCount",
+        "uniqueImpressionsCount",
+      ];
+      orgObserved = hasCounters(org, keys);
       stats = {
         ...stats,
-        impressionCount: s.impressionCount ?? 0,
-        uniqueImpressionsCount: s.uniqueImpressionsCount ?? 0,
-        shareCount: s.shareCount ?? 0,
-        clickCount: s.clickCount ?? 0,
-        engagement: s.engagement ?? 0,
+        ...Object.fromEntries(
+          keys.filter((k) => org[k] !== undefined && org[k] !== null).map((k) => [k, org[k]]),
+        ),
       };
     }
+    if (!orgObserved) warnings.push("additional_metrics_unavailable");
   }
-
-  return { metrics: fromLinkedIn(stats) };
+  if (!socialObserved && !orgObserved) return null;
+  return { metrics: fromLinkedIn(stats), warnings };
 }
 
-/* ------------------------------------------------------------------ */
-/* TikTok                                                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * TikTok's metrics require the `video.list` scope, which is a separate app
- * review from posting. We report null rather than guessing.
- */
-export async function collectTikTok(_ctx: InsightContext): Promise<InsightResult | null> {
-  return null;
-}
-
-/**
- * Google Business Profile reports insights only in aggregate per location
- * (`locations/{id}/reportInsights`), not per local post. Since VELT's snapshot
- * model is per post, there is nothing to attribute. Reporting null is the
- * honest answer; the UI already explains that this channel is publish-only.
- */
-export async function collectGoogleBusiness(_ctx: InsightContext): Promise<InsightResult | null> {
-  return null;
-}
-
-/* ------------------------------------------------------------------ */
-/* Registry                                                            */
-/* ------------------------------------------------------------------ */
-
+// Only implemented readers belong in the operational registry. TikTok's extra
+// approved capability and Google Business location aggregates are not per-post
+// collectors here; the runner reports them as unsupported, never invokes stubs.
 const COLLECTORS: Record<string, (ctx: InsightContext) => Promise<InsightResult | null>> = {
   instagram: collectInstagram,
   facebook: collectFacebook,
   youtube: collectYouTube,
   linkedin: collectLinkedIn,
-  tiktok: collectTikTok,
-  google_business: collectGoogleBusiness,
 };
-
 export function collectorFor(platform: string) {
   return COLLECTORS[platform] ?? null;
 }
-
 export function platformsWithInsights(): string[] {
-  return Object.entries(COLLECTORS)
-    .filter(([key]) => !["tiktok", "google_business"].includes(key))
-    .map(([key]) => key);
+  return Object.keys(COLLECTORS);
 }

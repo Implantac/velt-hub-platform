@@ -205,7 +205,9 @@ select pg_temp.probe('old_service_update_cannot_overwrite_credentials','update p
 select pg_temp.probe('old_service_delete_cannot_bypass_lifecycle','delete from public.oauth_tokens where channel_id=(select tiktok from qa5)','42501');
 select pg_temp.probe('old_service_status_write_cannot_expire_newer_auth','update public.channels set status=''expired'' where id=(select tiktok from qa5)','23514');
 select pg_temp.probe('old_service_status_write_cannot_reconnect_channel','update public.channels set status=''disconnected'' where id=(select tiktok from qa5)','23514');
-select pg_temp.probe('trusted_non_lifecycle_sync_timestamp_still_allowed','update public.channels set last_synced_at=clock_timestamp() where id=(select tiktok from qa5)');
+-- Round 6 intentionally closes the old direct timestamp path: only an atomic
+-- versioned observation may stamp collection freshness, even for service_role.
+select pg_temp.probe('non_lifecycle_sync_timestamp_requires_confirmed_observation','update public.channels set last_synced_at=clock_timestamp() where id=(select tiktok from qa5)','23514');
 reset role;
 
 select jsonb_build_object('all_passed',bool_and(passed),'passed',count(*) filter(where passed),'failed',count(*) filter(where not passed),'total',count(*),'results',jsonb_agg(to_jsonb(r) order by name)) as result from qa5_results r;

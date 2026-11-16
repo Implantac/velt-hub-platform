@@ -36,6 +36,14 @@ export interface ReportBundle {
   csv: string;
 }
 
+/** RLS deliberately makes missing and inaccessible workspaces indistinguishable. */
+export class ReportWorkspaceUnavailableError extends Error {
+  constructor() {
+    super("Workspace não encontrado ou acesso não permitido.");
+    this.name = "ReportWorkspaceUnavailableError";
+  }
+}
+
 async function fetchPublished(
   supabase: SupabaseClient<Database>,
   workspaceId: string,
@@ -108,7 +116,7 @@ export async function buildWeeklyReport(
     .eq("id", workspaceId)
     .maybeSingle();
   throwIfError(wsErr);
-  if (!ws) throw new Error("Workspace não encontrado ou acesso não permitido.");
+  if (!ws) throw new ReportWorkspaceUnavailableError();
 
   const [published, metricsCurrent, metricsPrevious] = await Promise.all([
     fetchPublished(supabase, workspaceId, {

@@ -43,6 +43,45 @@ export const EMPTY_METRICS: CanonicalMetrics = {
   engagement_rate: 0,
 };
 
+/** Exact write boundary. Account followers may be zero; missing data is not zero. */
+export const METRIC_COUNTERS = [
+  "impressions",
+  "reach",
+  "engagement",
+  "likes",
+  "comments",
+  "shares",
+  "saves",
+  "clicks",
+  "video_views",
+  "followers",
+] as const satisfies readonly (keyof CanonicalMetrics)[];
+
+export function observationMetrics(
+  raw: unknown,
+  accountFollowers?: unknown,
+): CanonicalMetrics | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const input = raw as Record<string, unknown>;
+  const output = { ...EMPTY_METRICS };
+  for (const key of METRIC_COUNTERS) {
+    const value =
+      key === "followers" && accountFollowers !== undefined ? accountFollowers : input[key];
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return null;
+    output[key] = value;
+  }
+  if (
+    typeof input.engagement_rate !== "number" ||
+    !Number.isFinite(input.engagement_rate) ||
+    input.engagement_rate < 0 ||
+    input.engagement_rate > Number.MAX_SAFE_INTEGER
+  )
+    return null;
+  // Do not carry metadata or trust a provider's precomputed ratio.
+  output.engagement_rate = deriveRate(output.engagement, output.impressions || output.reach);
+  return output;
+}
+
 type Raw = Record<string, unknown>;
 
 function num(...candidates: unknown[]): number {
@@ -117,27 +156,26 @@ export function fromInstagram(media: Raw, insights: Raw): CanonicalMetrics {
 /* ------------------------------------------------------------------ */
 
 export function fromFacebook(post: Raw, insights: Raw): CanonicalMetrics {
-  const map = new Map<string, number>();
+  const map = new Map<string, unknown>();
   const data = Array.isArray(insights.data) ? (insights.data as Raw[]) : [];
   for (const item of data) {
     const name = String(item.name ?? "");
     const values = Array.isArray(item.values) ? (item.values as Raw[]) : [];
     const first = (values[0] ?? {}) as Raw;
-    if (name) map.set(name, num(first.value));
+    if (name) map.set(name, first.value);
   }
 
-  const likes = map.get("post_reactions_by_type_total")
-    ? Object.values((map.get("post_reactions_by_type_total") as unknown as Raw) ?? {}).reduce(
-        (a: number, b) => a + num(b),
-        0,
-      )
-    : num(post.likes_count, post.like_count);
+  const reactions = map.get("post_reactions_by_type_total");
+  const likes =
+    reactions && typeof reactions === "object" && !Array.isArray(reactions)
+      ? Object.values(reactions).reduce((total: number, value) => total + num(value), 0)
+      : num(post.likes_count, post.like_count);
 
   const comments = num(post.comments_count);
   const shares = num(post.shares_count);
-  const impressions = map.get("post_impressions") ?? map.get("post_impressions_unique") ?? 0;
-  const reach = map.get("post_impressions_unique") ?? impressions;
-  const clicks = map.get("post_clicks") ?? 0;
+  const impressions = num(map.get("post_impressions"), map.get("post_impressions_unique"));
+  const reach = num(map.get("post_impressions_unique"), impressions);
+  const clicks = num(map.get("post_clicks"));
   const engagement =
     deriveEngagement(likes, comments, shares, 0) || num(map.get("post_engaged_users"));
 
@@ -150,7 +188,7 @@ export function fromFacebook(post: Raw, insights: Raw): CanonicalMetrics {
     comments,
     shares,
     clicks,
-    video_views: map.get("post_video_views") ?? 0,
+    video_views: num(map.get("post_video_views")),
     engagement_rate: deriveRate(engagement, impressions || reach),
   };
 }
@@ -189,7 +227,8 @@ export function fromLinkedIn(stats: Raw): CanonicalMetrics {
   const shares = num(stats.shareCount);
   const impressions = num(stats.impressionCount);
   const clicks = num(stats.clickCount);
-  const engagement = num(stats.engagement, deriveEngagement(likes, comments, shares, 0));
+  // LinkedIn's totalShareStatistics.engagement is a ratio, not an interaction count.
+  const engagement = deriveEngagement(likes, comments, shares, 0);
 
   return {
     ...EMPTY_METRICS,

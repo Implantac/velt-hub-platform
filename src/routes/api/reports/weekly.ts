@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import type { Database } from "@/integrations/supabase/types";
 
 /**
@@ -25,7 +26,11 @@ function realtimeTransport(): unknown {
     return InertWebSocket;
   }
 }
-import { buildWeeklyReport, reportFilename } from "@/lib/reports/report.server";
+import {
+  buildWeeklyReport,
+  reportFilename,
+  ReportWorkspaceUnavailableError,
+} from "@/lib/reports/report.server";
 
 /**
  * Authenticated download of the weekly report.
@@ -37,8 +42,8 @@ import { buildWeeklyReport, reportFilename } from "@/lib/reports/report.server";
  *
  * Auth: the `Authorization: Bearer <access_token>` header is verified against
  * Supabase, and every query afterwards runs with that token, so RLS decides what
- * the caller may read. A workspace the user does not belong to returns an empty
- * report rather than someone else's data.
+ * the caller may read. A workspace hidden by RLS returns the same 404 as a missing
+ * workspace, never an empty success report or someone else's data.
  *
  * `?format=csv` returns the same numbers as CSV — the PDF is for reading, the
  * CSV is for checking.
@@ -51,7 +56,7 @@ export const Route = createFileRoute("/api/reports/weekly")({
         const workspaceId = url.searchParams.get("workspaceId");
         const format = url.searchParams.get("format") === "csv" ? "csv" : "pdf";
 
-        if (!workspaceId || !/^[0-9a-f-]{36}$/i.test(workspaceId)) {
+        if (!workspaceId || !z.string().uuid().safeParse(workspaceId).success) {
           return json({ error: "workspaceId inválido" }, 400);
         }
 
@@ -113,6 +118,9 @@ export const Route = createFileRoute("/api/reports/weekly")({
             },
           });
         } catch (e) {
+          if (e instanceof ReportWorkspaceUnavailableError) {
+            return json({ error: "Workspace não encontrado ou acesso não permitido." }, 404);
+          }
           console.error("[reports] falha ao gerar:", e instanceof Error ? e.message : e);
           return json({ error: "não foi possível gerar o relatório" }, 500);
         }

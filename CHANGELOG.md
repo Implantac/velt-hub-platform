@@ -1,5 +1,23 @@
 # Changelog
 
+## [Observações analíticas atômicas — sexta rodada] — 2026-11-12
+
+### Persistência, fronteiras e resultados verdadeiros
+
+- Uma transação versionada confirma snapshot e data do canal; índice único por publicação externa/canal/dia UTC e merge por máximos no PostgreSQL. Corrige duplicação concorrente, perda de contador maior e `captured_at` antigo, sem reescrever registros legados.
+- Revalida token/job/identidade/workspace; disconnect/refresh/reautorização/exclusão vencem observação antiga. Snapshots SELECT-only para papéis de aplicação, guard da data e recorder legado sem EXECUTE. Não confundir com INSERT cliente, já protegido antes.
+- Recibo positivo/UUID/data obrigatórios; resposta perdida, ausente ou inválida não conta como salva nem dispara retry automático. Erros por post são visíveis; ausência não vira observação zero; mensagens seguras e contagens de leitura/gravação distintas.
+- Interface PT/EN distingue confirmado/parcial/erro/vazio e suprime toast de requisição anterior após troca de workspace. Registry não executa funções vazias para capacidades indisponíveis; execução mista é parcial.
+- Analytics/relatórios deduplicam por publicação externa/canal, incluindo conteúdo reutilizado. PDF/CSV conferidos com os contadores persistidos; workspace oculto/inexistente retorna 404 indistinguível e UUID inválido retorna 400, preservando RLS e falhas reais.
+
+### Evidências e limites
+
+- Duas migrations aplicadas uma vez no VELT, histórico com 31 entradas; bytes/hashes remotos iguais aos locais. 87/87 checks SQL remotos com rollback e paridade limitada de casos após ordenação C explícita; fingerprints reais preservados.
+- Typecheck/lint/build Vercel Node 22, 1.242 testes/71 arquivos, audit de produção sem vulnerabilidades reportadas; 424/424 checks locais em nove suítes PGlite focadas.
+- Runtime compilado com Auth/PostgREST/RLS reais: 20 checks/11 interleavings; oito processos na primeira observação e quatro atualizando a mesma linha, sem duplicação/perda de máximos. Providers/falhas sintéticos somente no harness externo.
+- Navegador: 14 checks, 12 análises Axe sem violações detectadas, PT/EN, larguras 320/390/1440 px e downloads reais. Fixtures removidas; nenhuma conexão de rede social ou publicação externa real.
+- Publicação remota/SHA/CI/smoke são evidência separada; main-only e CI paralelo/não gate preservados. TikTok/Google Business per-post, homologação de provedores e checklist comercial continuam pendentes. Não é declaração de ausência de bugs ou aceite de “100% funcional”. Consulte `docs/QA_ANALYTICS_RODADA_6.md` e `docs/OBSERVACOES_ANALITICAS.md`.
+
 ## [Ciclo de credenciais OAuth — quinta rodada] — 2026-11-12
 
 ### Autorização e renovação confiáveis

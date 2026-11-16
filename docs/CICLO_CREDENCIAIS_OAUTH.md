@@ -36,6 +36,8 @@ Uma nova autorização explícita, iniciada depois, é permitida. Uma tentativa 
 | `refresh_uncertain`, `invalid_grant`, `invalid_token`, `missing_refresh` | Exigir reconexão explícita da mesma conta. O canal fica expirado, não falsamente conectado.                          |
 | Canal desconectado/excluído                                              | Credenciais locais não podem ser recriadas por worker antigo. Nova autorização somente por ação explícita.           |
 
+A coleta analítica também fixa a versão efetivamente usada e a revalida no commit único de snapshot/data. Disconnect, refresh ou reautorização posterior recusam a observação antiga; 401 tardio continua sem poder invalidar a versão nova. Não gravar `last_synced_at` diretamente nem reutilizar o recorder legado. Veja [o contrato de observações](./OBSERVACOES_ANALITICAS.md).
+
 Scheduler/reconciliação distinguem falha transitória de autorização irrecuperável. Espera transitória de leitura conserva a consulta pendente, sem reenviar a publicação original. O mecanismo de [reconciliação/revisão](./RECONCILIACAO_PUBLICACOES.md) permanece independente: reconectar não confirma uma publicação e encerrar revisão não a reenvia.
 
 ## Google Business: primeiro vínculo de unidade

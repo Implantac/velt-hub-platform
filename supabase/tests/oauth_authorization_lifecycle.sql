@@ -124,9 +124,18 @@ begin select * into f from qa5;a:=pg_temp.issue(f.owner_id,'tiktok','tiktok',nul
   if _mode='assert' then perform pg_temp.ok((select state='cancelled' and reason='disconnected' from public.oauth_authorization_attempts where id=a.id));return true;end if;
   if _mode='epoch' then update public.oauth_authorization_attempts set state='exchanging' where id=a.id;end if;
   ch:=pg_temp.finish(a,case when _mode='target' then 'QA_TIKTOK' else 'QA_LATE_NEW_ID' end);return true;end $$;
-create function pg_temp.check_newest(_new_first boolean) returns boolean language plpgsql as $$
+create function pg_temp.check_newest(_new_first boolean,_same_instant boolean default false) returns boolean language plpgsql as $$
 declare older public.oauth_authorization_attempts;newer public.oauth_authorization_attempts;ch public.channels;f record;
-begin select * into f from qa5;older:=pg_temp.issue(f.owner_id);newer:=pg_temp.issue(f.owner_id);older:=pg_temp.take(older);newer:=pg_temp.take(newer);
+begin select * into f from qa5;older:=pg_temp.issue(f.owner_id);newer:=pg_temp.issue(f.owner_id);
+  -- These are explicit clock fixtures, not a change to production timestamps.
+  -- PGlite's millisecond clock can give consecutive starts the same instant.
+  -- Exercise strict ordering deterministically and test equal-time refusal too.
+  if _same_instant then
+    update public.oauth_authorization_attempts set created_at=older.created_at where id=newer.id returning * into newer;
+  else
+    update public.oauth_authorization_attempts set created_at=created_at-interval '1 second' where id=older.id returning * into older;
+  end if;
+  older:=pg_temp.take(older);newer:=pg_temp.take(newer);
   if _new_first then ch:=pg_temp.finish(newer);ch:=pg_temp.finish(older);
   else ch:=pg_temp.finish(older);ch:=pg_temp.finish(newer);perform pg_temp.ok(ch.oauth_authorization_started_at=newer.created_at);end if;
   return true;end $$;
@@ -174,6 +183,7 @@ select pg_temp.probe('delete_blocks_late_generic_new_identity','select pg_temp.c
 select pg_temp.probe('context_epoch_also_fences_stale_commits','select pg_temp.check_disconnect(''epoch'')','40001');
 select pg_temp.probe('newer_started_intent_can_supersede_older_completion','select pg_temp.check_newest(false)');
 select pg_temp.probe('older_intent_cannot_overwrite_newer_completion','select pg_temp.check_newest(true)','40001');
+select pg_temp.probe('equal_time_intents_cannot_overwrite_completed_authorization','select pg_temp.check_newest(false,true)','40001');
 select pg_temp.probe('reconnect_preserves_account_channel_and_brand','select pg_temp.check_reconnect(true)');
 select pg_temp.probe('reconnect_cannot_target_other_account','select pg_temp.check_reconnect(false)','23514');
 select pg_temp.probe('per_actor_rate_limit','select pg_temp.check_rate_limit()','54000');

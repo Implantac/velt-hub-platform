@@ -8,9 +8,10 @@ import { toast } from "sonner";
 import { AnalyticsSyncService } from "@/lib/services";
 import { useWorkspaceQuery } from "@/lib/query/use-workspace-query";
 import { collectionAge } from "@/lib/analytics/readiness";
-import type { SyncSummary } from "@/lib/analytics/sync.server";
+import { syncOutcome, type SyncSummary } from "@/lib/analytics/sync-result";
 import { PLATFORM_RULES, type PlatformId } from "@/lib/growth/platform-rules";
 import { QueryErrorState } from "@/features/shell/components/QueryErrorState";
+import { workspaceStore } from "@/lib/workspace/workspace-store";
 
 export function SyncMetricsPanel() {
   const { t } = useTranslation();
@@ -19,12 +20,15 @@ export function SyncMetricsPanel() {
   const runSync = useServerFn(AnalyticsSyncService.syncWorkspaceMetrics);
   const [running, setRunning] = useState(false);
   const lock = useRef(false);
-  const [last, setLast] = useState<SyncSummary | null>(null);
+  const [lastRun, setLastRun] = useState<{ workspaceId: string; summary: SyncSummary } | null>(
+    null,
+  );
   const q = useWorkspaceQuery(
     (workspaceId) => ["metrics-readiness", workspaceId],
     ({ workspaceId }) => getReadiness({ data: { workspaceId } }),
     { staleTime: 60_000, retry: false },
   );
+  const last = lastRun?.workspaceId === q.wsId ? lastRun.summary : null;
   const data = q.data;
   const canSync = !!data?.canSync && data.measurableChannels > 0;
   const help = !data
@@ -37,29 +41,37 @@ export function SyncMetricsPanel() {
 
   const onSync = async () => {
     if (!q.wsId || !canSync || q.isError || q.isFetching || lock.current) return;
+    const workspaceId = q.wsId;
     lock.current = true;
     setRunning(true);
     try {
-      const result = await runSync({ data: { workspaceId: q.wsId, lookbackDays: 30 } });
-      setLast(result);
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ["analytics", q.wsId] }),
-        qc.invalidateQueries({ queryKey: ["metrics-readiness", q.wsId] }),
-        qc.invalidateQueries({ queryKey: ["best-time", q.wsId] }),
+      const result = await runSync({ data: { workspaceId, lookbackDays: 30 } });
+      setLastRun({ workspaceId, summary: result });
+      await Promise.allSettled([
+        qc.invalidateQueries({ queryKey: ["analytics", workspaceId] }),
+        qc.invalidateQueries({ queryKey: ["metrics-readiness", workspaceId] }),
+        qc.invalidateQueries({ queryKey: ["best-time", workspaceId] }),
       ]);
-      if (result.snapshotsWritten > 0) {
+      // A completed request from a previous workspace must not announce success here.
+      if (workspaceStore.getSnapshot() !== workspaceId) return;
+      const outcome = syncOutcome(result);
+      if (outcome === "partial") {
+        toast.warning(t("analytics.syncPartial", { records: result.snapshotsWritten }));
+      } else if (outcome === "success") {
         toast.success(
           t("analytics.syncSuccess", {
             posts: result.postsMeasured,
             records: result.snapshotsWritten,
           }),
         );
-      } else if (result.errors.length > 0) {
+      } else if (outcome === "error") {
         toast.error(t("analytics.syncError", { count: result.errors.length }));
       } else {
         toast.message(t("analytics.noNewCollection"));
       }
     } catch {
+      if (workspaceStore.getSnapshot() !== workspaceId) return;
+      setLastRun(null);
       toast.error(t("analytics.syncFailed"));
     } finally {
       lock.current = false;
@@ -168,21 +180,54 @@ export function SyncMetricsPanel() {
         </ul>
       )}
       {last && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t("analytics.lastRun", { posts: last.postsMeasured, records: last.snapshotsWritten })}
-        </p>
+        <div role="status" className="space-y-1 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">
+            {t(`analytics.outcome_${syncOutcome(last)}`)}
+          </p>
+          <p>
+            {t("analytics.lastRun", {
+              posts: last.postsMeasured,
+              records: last.snapshotsWritten,
+              unavailable: last.postsUnavailable,
+            })}
+          </p>
+        </div>
       )}
       {last && last.errors.length > 0 && (
         <div
           role="alert"
-          className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
+          className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2"
         >
           {last.errors.slice(0, 3).map((error, index) => (
-            <p key={index} className="break-words text-xs leading-relaxed text-destructive">
-              {PLATFORM_RULES[error.platform as PlatformId]?.label ?? error.platform}: {error.error}
+            <p key={index} className="break-words text-xs leading-relaxed">
+              {PLATFORM_RULES[error.platform as PlatformId]?.label ?? error.platform}:{" "}
+              {t(`analytics.syncIssue_${error.code}`, {
+                defaultValue: t("analytics.syncIssue_collection_failed"),
+              })}
+              {error.count > 1 && <> {t("analytics.issueCount", { count: error.count })}</>}
             </p>
           ))}
+          {last.errors.length > 3 && (
+            <p className="text-xs">
+              {t("analytics.moreIssues", { count: last.errors.length - 3 })}
+            </p>
+          )}
         </div>
+      )}
+      {last && last.skipped.length > 0 && (
+        <ul
+          className="space-y-1 text-xs text-muted-foreground"
+          aria-label={t("analytics.skippedTitle")}
+        >
+          {last.skipped.slice(0, 3).map((skip, index) => (
+            <li key={index}>
+              {PLATFORM_RULES[skip.platform as PlatformId]?.label ?? skip.platform}:{" "}
+              {t(`analytics.syncSkip_${skip.code}`, {
+                defaultValue: t("analytics.syncSkip_unavailable"),
+              })}
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
