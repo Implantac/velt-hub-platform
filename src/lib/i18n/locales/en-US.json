@@ -366,7 +366,8 @@
     "scriptLanguage": "Script language",
     "narrationEstimate": "Estimated speaking time: {{seconds}} s (target: {{target}} s). Actual timing varies by voice and pauses.",
     "renderOutdated": "The title or narration changed since rendering. The available video still contains the previous version.",
-    "renderDownloadOutdated": "This video uses an earlier version of the title or narration. Download it anyway?"
+    "renderDownloadOutdated": "This video uses an earlier version of the title or narration. Download it anyway?",
+    "currentPageDrafts": "The script list offers only editable drafts on the current library page. Use filters and pagination to find others."
   },
   "tour": {
     "coreDashboardTitle": "Overview",
@@ -454,7 +455,7 @@
     "emptyText": "Write an idea in the form above. It stays in your workspace without posting to social networks.",
     "firstDraft": "Create first draft",
     "filteredTitle": "Nothing found",
-    "filteredText": "No content matches your current filters.",
+    "filteredText": "There are no items on this page for the current filters. Clear filters to start again or go back to the previous page.",
     "clearFilters": "Clear filters",
     "selected": "{{count}} selected",
     "moveTo": "Move to {{status}}",
@@ -479,7 +480,23 @@
     "editTitle": "Edit content",
     "editHint": "Save text and media references to the workspace. Cancel active scheduled jobs before editing.",
     "saved": "Content saved.",
-    "saveChanges": "Save changes"
+    "saveChanges": "Save changes",
+    "libraryFilters": "Library filters",
+    "libraryResults": "Library results",
+    "globalSearchHint": "Literal search across the whole workspace: title, text or brand. Up to 200 characters. Counts follow the search.",
+    "deliveryLocked": "Protected by an active schedule or an unconfirmed publishing result. Resolve the queue or review before making changes.",
+    "selectPage": "Select editable items on this page ({{count}})",
+    "unselectPage": "Unselect this page",
+    "selectionScope": "Selection applies only to editable items on this page. Changing page, filter or search clears selection.",
+    "selectedOnPage": "{{count}} selected on this page",
+    "editorPaused": "Your text has been kept. Saving is paused while the library is being checked, is unavailable, or this item is not editable on the current page.",
+    "pagination": "Library pagination",
+    "updatingLibrary": "Updating library…",
+    "pageSummary": "Page {{page}} · {{shown}} on this page · {{total}} results · {{workspaceTotal}} in workspace",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "refreshLibrary": "Refresh list",
+    "pageOrderHint": "Up to 20 items per page, newest first. Concurrent changes may affect pages and totals. Refresh or clear filters to start again."
   },
   "channels": {
     "title": "Channels",

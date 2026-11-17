@@ -1,6 +1,5 @@
 import { useCurrentWorkspaceId } from "@/lib/workspace/use-workspace";
 import { WorkspaceAccessNotice } from "@/features/shell/components/WorkspaceAccessNotice";
-import { QueryErrorState } from "@/features/shell/components/QueryErrorState";
 import { modulePageHead } from "@/lib/page-head";
 import { useTranslation } from "react-i18next";
 import { createFileRoute } from "@tanstack/react-router";
@@ -11,6 +10,7 @@ import { ContentComposer } from "@/features/content/components/ContentComposer";
 import { ContentFilters } from "@/features/content/components/ContentFilters";
 import { BulkActionBar } from "@/features/content/components/BulkActionBar";
 import { ContentList } from "@/features/content/components/ContentList";
+import { ContentPagination } from "@/features/content/components/ContentPagination";
 import { useContentPage } from "@/features/content/hooks/useContentPage";
 import { usePreflight } from "@/features/content/hooks/usePreflight";
 import { PreflightPanel } from "@/features/content/components/PreflightPanel";
@@ -52,7 +52,8 @@ function ContentPageWorkspace() {
             onMediaInputChange={p.setMediaInput}
             onTitleChange={p.setTitle}
             onBodyChange={p.setBody}
-            onSubmit={() => p.createMut.mutate()}
+            onSubmit={p.createDraft}
+            submitDisabled={p.actionsDisabled}
             isPending={p.createMut.isPending}
             disabled={!p.access.canEdit}
             canPublish={pre.result?.canPublish ?? true}
@@ -79,7 +80,12 @@ function ContentPageWorkspace() {
                 {t("content.optional")}
               </span>
             </summary>
-            <StudioPanel key={p.q.wsId ?? "no-workspace"} workspaceId={p.q.wsId} items={p.items} />
+            <StudioPanel
+              key={p.q.wsId ?? "no-workspace"}
+              workspaceId={p.q.wsId}
+              items={p.items}
+              sourcePending={p.readPending || p.q.isError || p.operationsPending}
+            />
           </details>
         )}
 
@@ -89,34 +95,48 @@ function ContentPageWorkspace() {
           search={p.search}
           onSearchChange={p.setSearch}
           counts={p.counts}
+          disabled={p.operationsPending}
         />
 
         {p.selected.size > 0 && (
           <BulkActionBar
             count={p.selected.size}
-            disabled={p.bulkPending || !p.access.canEdit}
+            disabled={p.actionsDisabled}
             onMoveTo={p.runBulkStatus}
             onDelete={p.runBulkDelete}
-            onClear={() => p.setSelected(new Set())}
+            onClear={p.clearSelection}
           />
         )}
 
-        {p.q.isError ? (
-          <QueryErrorState onRetry={() => void p.q.refetch()} pending={p.q.isFetching} />
-        ) : (
-          <ContentList
-            disabled={!p.access.canEdit || p.bulkPending}
-            items={p.items}
-            filtered={p.filtered}
-            isLoading={p.q.isLoading}
-            selected={p.selected}
-            allVisibleSelected={p.allVisibleSelected}
-            onToggleAll={p.toggleAll}
-            onToggleOne={p.toggleOne}
-            onStatusChange={p.changeStatus}
-            onClearFilters={p.clearFilters}
-          />
-        )}
+        <ContentList
+          disabled={p.actionsDisabled}
+          items={p.items}
+          workspaceTotal={p.workspaceTotal}
+          isLoading={p.q.isPending || p.searchPending}
+          isError={p.q.isError}
+          retryPending={p.q.isFetching}
+          onRetry={() => void p.q.refetch()}
+          selected={p.selected}
+          selectableCount={p.selectableCount}
+          allVisibleSelected={p.allVisibleSelected}
+          onToggleAll={p.toggleAll}
+          onToggleOne={p.toggleOne}
+          onStatusChange={p.changeStatus}
+          onClearFilters={p.clearFilters}
+        />
+        <ContentPagination
+          pageNumber={p.pageNumber}
+          shown={p.items.length}
+          total={p.counts?.[p.filter]}
+          workspaceTotal={p.q.isSuccess ? p.workspaceTotal : undefined}
+          pending={p.readPending}
+          disabled={p.navigationDisabled}
+          hasPrevious={p.hasPrevious}
+          hasNext={p.hasNext}
+          onPrevious={p.previousPage}
+          onNext={p.nextPage}
+          onRefresh={() => void p.q.refetch()}
+        />
       </div>
     </PageTransition>
   );

@@ -11,6 +11,7 @@ interface ContentComposerProps {
   onSubmit: () => void;
   isPending: boolean;
   disabled?: boolean;
+  submitDisabled?: boolean;
   canPublish?: boolean;
 }
 
@@ -24,6 +25,7 @@ export function ContentComposer({
   onSubmit,
   isPending,
   disabled = false,
+  submitDisabled = false,
   canPublish = true,
 }: ContentComposerProps) {
   const { t } = useTranslation();
@@ -39,7 +41,7 @@ export function ContentComposer({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (title.trim() && !isPending && !disabled) onSubmit();
+          if (title.trim() && !isPending && !disabled && !submitDisabled) onSubmit();
         }}
         className="space-y-4"
       >
@@ -97,7 +99,7 @@ export function ContentComposer({
         </p>
         <button
           type="submit"
-          disabled={disabled || isPending || !title.trim()}
+          disabled={disabled || submitDisabled || isPending || !title.trim()}
           aria-describedby="draft-save-hint"
           className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 sm:w-auto"
         >

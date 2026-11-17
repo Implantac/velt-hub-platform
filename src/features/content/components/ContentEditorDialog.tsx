@@ -9,12 +9,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { updateContent } from "@/lib/api/content.functions";
-import type { Content } from "@/lib/api/_types";
+import type { ContentBrowseItem } from "@/lib/content/browse";
 import { contentMediaUrls, parseMediaInput } from "@/lib/content/media";
 import { useWorkspaceMutation } from "@/lib/query/use-workspace-query";
 
 /** Local draft survives network failures; opening another item always creates a fresh editor. */
-export function ContentEditorDialog({ item, onClose }: { item: Content; onClose: () => void }) {
+export function ContentEditorDialog({
+  item,
+  onClose,
+  saveDisabled = false,
+  refreshPending = false,
+  onRefresh,
+}: {
+  item: ContentBrowseItem;
+  onClose: () => void;
+  saveDisabled?: boolean;
+  refreshPending?: boolean;
+  onRefresh: () => void;
+}) {
   const { t } = useTranslation();
   const save = useServerFn(updateContent);
   const [title, setTitle] = useState(item.title ?? "");
@@ -56,10 +68,25 @@ export function ContentEditorDialog({ item, onClose }: { item: Content; onClose:
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (title.trim() && !mutation.isPending) mutation.mutate();
+            if (title.trim() && !mutation.isPending && !saveDisabled) mutation.mutate();
           }}
           aria-busy={mutation.isPending}
         >
+          {saveDisabled && (
+            <div className="space-y-2">
+              <p role="status" className="text-sm text-muted-foreground">
+                {t("content.editorPaused")}
+              </p>
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshPending || mutation.isPending}
+                className="min-h-11 rounded-lg border px-3 py-2 text-sm disabled:opacity-50"
+              >
+                {t(refreshPending ? "common.loading" : "content.refreshLibrary")}
+              </button>
+            </div>
+          )}
           <fieldset disabled={mutation.isPending} className="space-y-4">
             <label className="block space-y-1.5" htmlFor="edit-content-title">
               <span className="text-sm font-medium">{t("content.titleLabel")}</span>
@@ -115,7 +142,7 @@ export function ContentEditorDialog({ item, onClose }: { item: Content; onClose:
             </button>
             <button
               type="submit"
-              disabled={mutation.isPending || !title.trim()}
+              disabled={mutation.isPending || saveDisabled || !title.trim()}
               className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
             >
               {t(mutation.isPending ? "content.saving" : "content.saveChanges")}

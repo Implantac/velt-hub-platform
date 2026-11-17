@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { BadgeCheck, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { fadeUp } from "@/components/app/motion-presets";
@@ -25,14 +26,21 @@ export function CoachCard({
   coach: ReturnType<typeof useCoach>;
   onUseSuggestion: (text: string) => void;
 }) {
+  const headingId = useId();
   const { result, pending, error, canRun, request, reset } = coach;
 
   return (
-    <motion.aside variants={fadeUp} className="section-card space-y-3 p-5">
+    <motion.aside
+      aria-labelledby={headingId}
+      variants={fadeUp}
+      className="section-card space-y-3 p-5"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 text-accent" />
-          <h3 className="text-sm font-semibold">Reescrita com IA</h3>
+          <h3 id={headingId} className="text-sm font-semibold">
+            Reescrita com IA
+          </h3>
         </div>
         {result?.source === "ai" && (
           <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">

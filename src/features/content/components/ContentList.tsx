@@ -4,16 +4,22 @@ import { type ManualContentStatus } from "@/lib/content/status";
 import { useTranslation } from "react-i18next";
 import { CheckSquare, Square } from "lucide-react";
 import { ListSkeleton } from "@/components/app/Skeletons";
-import type { Content } from "@/lib/api/_types";
+import { QueryErrorState } from "@/features/shell/components/QueryErrorState";
+import type { ContentBrowseItem } from "@/lib/content/browse";
 import { ContentRow } from "./ContentRow";
 import { ContentEmptyAll, ContentEmptyFiltered } from "./ContentEmpty";
+import { canModifyContent } from "../browse-state";
 
 type Props = {
-  items: Content[];
-  filtered: Content[];
+  items: ContentBrowseItem[];
+  workspaceTotal?: number;
   isLoading: boolean;
+  isError: boolean;
+  retryPending: boolean;
+  onRetry: () => void;
   disabled?: boolean;
   selected: Set<string>;
+  selectableCount: number;
   allVisibleSelected: boolean;
   onToggleAll: () => void;
   onToggleOne: (id: string) => void;
@@ -23,10 +29,14 @@ type Props = {
 
 export function ContentList({
   items,
-  filtered,
+  workspaceTotal,
   isLoading,
+  isError,
+  retryPending,
+  onRetry,
   disabled = false,
   selected,
+  selectableCount,
   allVisibleSelected,
   onToggleAll,
   onToggleOne,
@@ -34,41 +44,71 @@ export function ContentList({
   onClearFilters,
 }: Props) {
   const { t } = useTranslation();
-  const [editing, setEditing] = useState<Content | null>(null);
+  const [editing, setEditing] = useState<ContentBrowseItem | null>(null);
   return (
-    <div className="space-y-2">
-      {editing && !disabled && (
-        <ContentEditorDialog key={editing.id} item={editing} onClose={() => setEditing(null)} />
+    <section
+      className="space-y-2"
+      aria-label={t("content.libraryResults")}
+      aria-busy={isLoading || retryPending}
+    >
+      {/* Keep this mounted through a list refetch/error. Never reinitialize a user's local draft. */}
+      {editing && (
+        <ContentEditorDialog
+          key={editing.id}
+          item={editing}
+          onClose={() => setEditing(null)}
+          onRefresh={onRetry}
+          refreshPending={isLoading || retryPending}
+          saveDisabled={
+            disabled || isError || !items.some((i) => i.id === editing.id && canModifyContent(i))
+          }
+        />
       )}
-      {filtered.length > 0 && (
-        <button
-          disabled={disabled}
-          onClick={onToggleAll}
-          className="inline-flex items-center gap-2 px-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {allVisibleSelected ? <CheckSquare className="size-4" /> : <Square className="size-4" />}
-          {t(allVisibleSelected ? "content.unselectAll" : "content.selectAll")}
-        </button>
+      {isError && <QueryErrorState onRetry={onRetry} pending={retryPending} />}
+      {items.length > 0 && (
+        <>
+          <button
+            type="button"
+            disabled={disabled || selectableCount === 0}
+            onClick={onToggleAll}
+            aria-pressed={allVisibleSelected}
+            className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+          >
+            {allVisibleSelected ? (
+              <CheckSquare aria-hidden="true" className="size-5" />
+            ) : (
+              <Square aria-hidden="true" className="size-5" />
+            )}
+            {t(allVisibleSelected ? "content.unselectPage" : "content.selectPage", {
+              count: selectableCount,
+            })}
+          </button>
+          <p className="pb-2 text-xs text-muted-foreground">{t("content.selectionScope")}</p>
+        </>
       )}
-      {filtered.map((c) => (
+      {items.map((c) => (
         <ContentRow
           key={c.id}
           item={c}
-          disabled={disabled}
+          disabled={disabled || isError}
           selected={selected.has(c.id)}
           onToggle={() => onToggleOne(c.id)}
-          onEdit={() => setEditing(c)}
+          onEdit={() => {
+            if (!disabled && !isError && canModifyContent(c)) setEditing(c);
+          }}
           onStatusChange={(status) => onStatusChange(c.id, status)}
         />
       ))}
-      {isLoading && <ListSkeleton rows={4} />}
+      {isLoading && items.length === 0 && <ListSkeleton rows={4} />}
       {!isLoading &&
-        filtered.length === 0 &&
-        (items.length === 0 ? (
+        !isError &&
+        items.length === 0 &&
+        workspaceTotal !== undefined &&
+        (workspaceTotal === 0 ? (
           <ContentEmptyAll />
         ) : (
           <ContentEmptyFiltered onClear={onClearFilters} />
         ))}
-    </div>
+    </section>
   );
 }

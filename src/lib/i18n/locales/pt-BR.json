@@ -366,7 +366,8 @@
     "scriptLanguage": "Idioma do roteiro",
     "narrationEstimate": "Estimativa de fala: {{seconds}} s (meta: {{target}} s). O tempo real varia conforme a voz e as pausas.",
     "renderOutdated": "O título ou a narração mudou desde a renderização. O vídeo disponível ainda contém a versão anterior.",
-    "renderDownloadOutdated": "Este vídeo usa uma versão anterior do título ou da narração. Deseja baixá-lo mesmo assim?"
+    "renderDownloadOutdated": "Este vídeo usa uma versão anterior do título ou da narração. Deseja baixá-lo mesmo assim?",
+    "currentPageDrafts": "A lista de roteiros oferece somente rascunhos editáveis da página atual da biblioteca. Use os filtros e a paginação para encontrar outros."
   },
   "tour": {
     "coreDashboardTitle": "Visão geral",
@@ -454,7 +455,7 @@
     "emptyText": "Escreva uma ideia no formulário acima. Ela fica salva no seu workspace, sem publicar nas redes.",
     "firstDraft": "Criar primeiro rascunho",
     "filteredTitle": "Nada encontrado",
-    "filteredText": "Nenhum conteúdo corresponde aos filtros atuais.",
+    "filteredText": "Não há itens nesta página para os filtros atuais. Limpe os filtros para recomeçar ou volte à página anterior.",
     "clearFilters": "Limpar filtros",
     "selected": "{{count}} selecionado(s)",
     "moveTo": "Mover para {{status}}",
@@ -479,7 +480,23 @@
     "editTitle": "Editar conteúdo",
     "editHint": "Salva texto e referências de mídia no workspace. Cancele agendamentos ativos antes de editar.",
     "saved": "Conteúdo salvo.",
-    "saveChanges": "Salvar alterações"
+    "saveChanges": "Salvar alterações",
+    "libraryFilters": "Filtros da biblioteca",
+    "libraryResults": "Resultados da biblioteca",
+    "globalSearchHint": "Busca literal em todo o workspace: título, texto ou marca. Até 200 caracteres. Os contadores acompanham a busca.",
+    "deliveryLocked": "Protegido por agendamento ativo ou resultado de publicação sem confirmação. Resolva a fila ou revisão antes de alterar.",
+    "selectPage": "Selecionar editáveis desta página ({{count}})",
+    "unselectPage": "Desmarcar esta página",
+    "selectionScope": "A seleção vale somente para itens editáveis desta página. Mudar página, filtro ou busca limpa a seleção.",
+    "selectedOnPage": "{{count}} selecionado(s) nesta página",
+    "editorPaused": "Seu texto foi mantido. O salvamento está pausado enquanto a biblioteca é verificada, está indisponível ou este item não está editável na página atual.",
+    "pagination": "Paginação da biblioteca",
+    "updatingLibrary": "Atualizando biblioteca…",
+    "pageSummary": "Página {{page}} · {{shown}} nesta página · {{total}} resultados · {{workspaceTotal}} no workspace",
+    "previousPage": "Anterior",
+    "nextPage": "Próxima",
+    "refreshLibrary": "Atualizar lista",
+    "pageOrderHint": "Até 20 itens por página, do mais recente para o mais antigo. Alterações simultâneas podem mudar as páginas e os totais. Atualize ou limpe os filtros para recomeçar."
   },
   "channels": {
     "title": "Canais",

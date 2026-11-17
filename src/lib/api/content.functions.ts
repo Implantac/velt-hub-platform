@@ -6,6 +6,14 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { confirmMutationRows, throwIfError, unwrap } from "./_supabase";
 import { assertBrandInWorkspace, requireWorkspaceRole } from "./_workspace";
 import { WORKSPACE_EDIT_ROLES } from "@/lib/workspace/permissions";
+import { contentBrowseInputSchema } from "@/lib/content/browse";
+import { readContentPage } from "./_content-browse";
+
+/** Full-library search/counts with stable page cursors; legacy listContent is preserved. */
+export const getContentPage = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => contentBrowseInputSchema.parse(input))
+  .handler(({ data, context }) => readContentPage(context.supabase, context.userId, data));
 
 const ContentType = z.enum(["post", "reel", "story", "short", "video", "article", "carousel"]);
 const ContentStatus = z.enum([

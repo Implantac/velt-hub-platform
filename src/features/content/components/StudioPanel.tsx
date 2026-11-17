@@ -11,7 +11,8 @@ import {
   downloadStudioVideo,
 } from "@/lib/api/studio.functions";
 import { studioMetadataSchema, type StudioBrief, type StudioScript } from "@/lib/studio/schema";
-import type { Content } from "@/lib/api/_types";
+import type { ContentBrowseItem } from "@/lib/content/browse";
+import { canModifyContent } from "../browse-state";
 import {
   estimateNarrationSeconds,
   isRenderOutdated,
@@ -36,9 +37,11 @@ const initialBrief = (workspaceId: string, language: "pt-BR" | "en-US"): StudioB
 export function StudioPanel({
   workspaceId,
   items,
+  sourcePending = false,
 }: {
   workspaceId: string | null;
-  items: Content[];
+  items: ContentBrowseItem[];
+  sourcePending?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const language = i18n.language === "en-US" ? "en-US" : "pt-BR";
@@ -120,7 +123,10 @@ export function StudioPanel({
   const videoOutdated = script ? isRenderOutdated(renderSnapshot, script) : false;
   const busy = generate.isPending || save.isPending || createVideo.isPending || download.isPending;
   const drafts = items.filter(
-    (item) => item.status === "draft" && studioMetadataSchema.safeParse(item.metadata).success,
+    (item) =>
+      item.status === "draft" &&
+      canModifyContent(item) &&
+      studioMetadataSchema.safeParse(item.metadata).success,
   );
   const updateBrief = <K extends keyof StudioBrief>(key: K, value: StudioBrief[K]) => {
     setBrief((old) => ({ ...old, [key]: value }));
@@ -134,7 +140,7 @@ export function StudioPanel({
   const openDraft = () => {
     const item = drafts.find((draft) => draft.id === selected);
     const parsed = studioMetadataSchema.safeParse(item?.metadata);
-    if (!item || !parsed.success || !confirmReplace()) return;
+    if (sourcePending || !item || !parsed.success || !confirmReplace()) return;
     setBrief(parsed.data.studio.brief);
     setScript(parsed.data.studio.script);
     setDraftId(item.id);
@@ -172,6 +178,7 @@ export function StudioPanel({
           {t("studio.title")}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">{t("studio.description")}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{t("studio.currentPageDrafts")}</p>
       </div>
       {drafts.length > 0 && (
         <div className="flex flex-wrap items-end gap-2">
@@ -183,7 +190,7 @@ export function StudioPanel({
               className={control}
               value={selected}
               onChange={(e) => setSelected(e.target.value)}
-              disabled={busy}
+              disabled={busy || sourcePending}
             >
               <option value="">{t("studio.selectDraft")}</option>
               {drafts.map((d) => (
@@ -193,7 +200,12 @@ export function StudioPanel({
               ))}
             </select>,
           )}
-          <button type="button" className={button} onClick={openDraft} disabled={!selected || busy}>
+          <button
+            type="button"
+            className={button}
+            onClick={openDraft}
+            disabled={!drafts.some((d) => d.id === selected) || busy || sourcePending}
+          >
             {t("studio.loadingDraft")}
           </button>
         </div>

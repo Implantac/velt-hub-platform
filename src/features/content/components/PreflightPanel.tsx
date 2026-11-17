@@ -1,3 +1,4 @@
+import { useId } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -113,17 +114,24 @@ export function PreflightPanel({
   hookSuggestions,
   platformLabel,
 }: PreflightPanelProps) {
+  const headingId = useId();
   const primary = result?.channels[0];
   const issues = primary
     ? [...primary.blockers, ...primary.warnings, ...primary.tips].slice(0, 6)
     : [];
 
   return (
-    <motion.aside variants={fadeUp} className="section-card space-y-4 p-5">
+    <motion.aside
+      aria-labelledby={headingId}
+      variants={fadeUp}
+      className="section-card space-y-4 p-5"
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 text-accent" />
-          <h3 className="text-sm font-semibold">Pré-voo do Brain</h3>
+          <h3 id={headingId} className="text-sm font-semibold">
+            Pré-voo do Brain
+          </h3>
         </div>
         {primary && (
           <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">
