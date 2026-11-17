@@ -1,30 +1,37 @@
 /**
  * VELT — Growth Intelligence server functions.
  *
- * Exposes the pure engines in `src/lib/growth/*` to the UI, enriched with the
- * workspace's own data. The key advantage over market tools: best-time-to-post
- * is derived from THIS account's measured engagement (analytics_snapshots), not
- * from a cross-account average.
+ * Exposes the pure engines in `src/lib/growth/*` to the UI. Timing suggestions
+ * use an explicitly selected channel's attributed send/measurement history when
+ * sufficient evidence exists, or clearly identified editorial references.
+ * Generic platform references never claim account-specific measured results.
  */
 import { createServerFn } from "@tanstack/react-start";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/integrations/supabase/types";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { throwIfError } from "./_supabase";
 import { adReadiness, preflight, suggestHooks } from "@/lib/growth/post-quality";
 import {
   cadenceTarget,
+  MIN_OBSERVATIONS_PER_SLOT,
+  MIN_OBSERVATIONS_TOTAL,
   nextBestSlot,
+  nextSlotOccurrence,
+  observationBasis,
   rankSlots,
-  type SlotObservation,
 } from "@/lib/growth/scheduling";
+import {
+  timingObservations,
+  TIMING_HISTORY_DAYS,
+  TIMING_JOB_LIMIT,
+} from "@/lib/growth/timing-observations";
+import type { TimingRecommendation } from "@/lib/growth/timing";
+import { isTimeZone } from "@/lib/time-zones";
 import { ALL_PLATFORMS, PUBLISH_ENABLED, rulesFor } from "@/lib/growth/platform-rules";
+import { requireWorkspaceRole } from "./_workspace";
+import { readAllPages } from "./_pagination";
 
-const PlatformInput = z.enum(ALL_PLATFORMS as [string, ...string[]]);
-
-/** The DB enum only carries the five platforms the product actively supports. */
-type SocialPlatform = Database["public"]["Enums"]["social_platform"];
+const PlatformInput = z.enum(ALL_PLATFORMS);
 
 /* ------------------------------------------------------------------ */
 /* Preflight                                                           */
@@ -116,113 +123,124 @@ export const suggestPostHooks = createServerFn({ method: "POST" })
 /* Best time to post                                                   */
 /* ------------------------------------------------------------------ */
 
-/**
- * Builds slot observations from the workspace's own publication history:
- * succeeded jobs give the timestamp, analytics_snapshots give the result.
- */
-async function loadObservations(
-  supabase: SupabaseClient<Database>,
-  workspaceId: string,
-  platform: SocialPlatform,
-): Promise<{ observations: SlotObservation[]; platform: SocialPlatform; usedFallback: boolean }> {
-  // Channels for this platform.
-  const { data: channels, error: chErr } = await supabase
-    .from("channels")
-    .select("id")
-    .eq("workspace_id", workspaceId)
-    .eq("platform", platform);
-  throwIfError(chErr);
-
-  const channelIds = (channels ?? []).map((c) => c.id);
-  if (channelIds.length === 0) {
-    return { observations: [], platform, usedFallback: true };
-  }
-
-  const { data: jobs, error: jErr } = await supabase
-    .from("scheduler_jobs")
-    .select("content_id, scheduled_at, status")
-    .eq("workspace_id", workspaceId)
-    .eq("status", "succeeded")
-    .in("channel_id", channelIds)
-    .order("scheduled_at", { ascending: false })
-    .limit(300);
-  throwIfError(jErr);
-  if (!jobs || jobs.length === 0) {
-    return { observations: [], platform, usedFallback: true };
-  }
-
-  const contentIds = [...new Set(jobs.map((j) => j.content_id).filter(Boolean))];
-  const { data: snaps, error: sErr } = await supabase
-    .from("analytics_snapshots")
-    .select("content_id, metrics, captured_at")
-    .eq("workspace_id", workspaceId)
-    .in("content_id", contentIds)
-    .order("captured_at", { ascending: false });
-  throwIfError(sErr);
-
-  // Keep the most recent snapshot per content.
-  const latest = new Map<string, { engagement: number; impressions: number }>();
-  for (const s of snaps ?? []) {
-    if (!s.content_id || latest.has(s.content_id)) continue;
-    const m = (s.metrics ?? {}) as Record<string, unknown>;
-    latest.set(s.content_id, {
-      engagement: Number(m.engagement ?? 0),
-      impressions: Number(m.impressions ?? m.reach ?? 0),
-    });
-  }
-
-  const observations: SlotObservation[] = [];
-  for (const j of jobs) {
-    if (!j.scheduled_at) continue;
-    const metric = j.content_id ? latest.get(j.content_id) : undefined;
-    if (!metric) continue;
-    observations.push({
-      publishedAt: j.scheduled_at,
-      engagement: metric.engagement,
-      impressions: metric.impressions || undefined,
-    });
-  }
-
-  return { observations, platform, usedFallback: observations.length === 0 };
-}
-
+/** Explicit channel history or an explicitly selected, history-free platform reference. */
 export const getBestTimeToPost = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
     z
       .object({
         workspaceId: z.string().uuid(),
-        platform: PlatformInput.default("instagram"),
-        /** ISO instant to compute from. Defaults to now. */
+        platform: PlatformInput,
+        channelId: z.string().uuid().optional(),
+        timeZone: z.string().max(100).refine(isTimeZone, "Invalid time zone").default("UTC"),
         from: z.string().datetime().optional(),
       })
       .parse(input),
   )
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { observations, usedFallback } = await loadObservations(
-      supabase,
-      data.workspaceId,
-      data.platform as SocialPlatform,
-    );
-
+  .handler(async ({ data, context }): Promise<TimingRecommendation> => {
+    const { supabase, userId } = context;
+    await requireWorkspaceRole(supabase, data.workspaceId, userId);
     const from = data.from ? new Date(data.from) : new Date();
-    const best = nextBestSlot(String(data.platform), observations, from);
-    const ranked = rankSlots(String(data.platform), observations).slice(0, 6);
-    const { data: profile } = await supabase
+    let channel: TimingRecommendation["channel"] = null;
+    let measured: ReturnType<typeof timingObservations> = {
+      observations: [],
+      latestCapturedAt: null,
+    };
+    if (data.channelId) {
+      const selected = await supabase
+        .from("channels")
+        .select("id,platform,handle,status")
+        .eq("workspace_id", data.workspaceId)
+        .eq("id", data.channelId)
+        .maybeSingle();
+      throwIfError(selected.error);
+      if (!selected.data || selected.data.platform !== data.platform)
+        throw new Error("Canal não encontrado neste workspace e plataforma.");
+      channel = {
+        id: selected.data.id,
+        handle: selected.data.handle,
+        status: selected.data.status,
+      };
+      const since = new Date(from.getTime() - TIMING_HISTORY_DAYS * 86400_000).toISOString();
+      const jobs = await supabase
+        .from("scheduler_jobs")
+        .select("id,channel_id,content_id,status,external_post_id,delivery_started_at")
+        .eq("workspace_id", data.workspaceId)
+        .eq("channel_id", channel.id)
+        .eq("status", "succeeded")
+        .not("external_post_id", "is", null)
+        .not("external_post_id", "like", "sim\\_%")
+        .gte("delivery_started_at", since)
+        .lte("delivery_started_at", from.toISOString())
+        .order("delivery_started_at", { ascending: false })
+        .order("id", { ascending: true })
+        .limit(TIMING_JOB_LIMIT);
+      throwIfError(jobs.error);
+      if (!jobs.data) throw new Error("O histórico de envios não foi retornado.");
+      if (jobs.data.length > 0) {
+        const contentIds = [...new Set(jobs.data.map((j) => j.content_id))];
+        const snapshots = await readAllPages(
+          (first, last) =>
+            supabase
+              .from("analytics_snapshots")
+              .select("id,channel_id,content_id,captured_at,metrics")
+              .eq("workspace_id", data.workspaceId)
+              .eq("channel_id", channel!.id)
+              .in("content_id", contentIds)
+              .gte("captured_at", since)
+              .lte("captured_at", from.toISOString())
+              .order("captured_at", { ascending: false })
+              .order("id", { ascending: true })
+              .range(first, last),
+          { maxRows: 50_000 },
+        );
+        measured = timingObservations(jobs.data, snapshots, from.getTime());
+      }
+    }
+    const { observations, latestCapturedAt } = measured;
+    const best = nextBestSlot(data.platform, observations, from, 30, data.timeZone);
+    const topSlots = rankSlots(data.platform, observations, data.timeZone)
+      .slice(0, 6)
+      .flatMap((slot) => {
+        const next = nextSlotOccurrence(slot, from, data.timeZone);
+        return next
+          ? [
+              {
+                at: next.at.toISOString(),
+                weekday: slot.weekday,
+                hour: slot.hour,
+                samples: slot.samples,
+                confidence: slot.confidence,
+              },
+            ]
+          : [];
+      });
+    const profile = await supabase
       .from("user_profile_digital")
-      .select("time_budget_hours_week, experience_level")
-      .eq("user_id", context.userId)
+      .select("time_budget_hours_week,experience_level")
+      .eq("user_id", userId)
       .maybeSingle();
-
+    throwIfError(profile.error);
+    const cadence = cadenceTarget(data.platform, profile.data);
     return {
-      platform: String(data.platform),
-      best,
-      topSlots: ranked,
-      /** True when no personalised data existed — the UI must say so. */
-      usedFallback,
+      workspaceId: data.workspaceId,
+      platform: data.platform,
+      channel,
+      timeZone: data.timeZone,
+      referenceAt: from.toISOString(),
+      best: { at: best.at, confidence: best.confidence, samples: best.samples },
+      topSlots,
+      usedFallback: best.confidence === "baseline",
       observationsCount: observations.length,
-      cadence: cadenceTarget(String(data.platform), profile),
+      basis: observationBasis(observations),
+      minimum: { total: MIN_OBSERVATIONS_TOTAL, perSlot: MIN_OBSERVATIONS_PER_SLOT },
+      history: { days: TIMING_HISTORY_DAYS, maxJobs: TIMING_JOB_LIMIT, latestCapturedAt },
+      cadence: {
+        perWeek: cadence.perWeek,
+        source: cadence.source,
+        reasonCode: cadence.reasonCode,
+        hoursPerWeek: cadence.hoursPerWeek,
+      },
     };
   });
 

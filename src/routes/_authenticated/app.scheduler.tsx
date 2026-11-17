@@ -26,6 +26,7 @@ import { STATUSES } from "@/features/scheduler/constants";
 import { SchedulerFilters } from "@/features/scheduler/components/SchedulerFilters";
 import { SchedulerTable } from "@/features/scheduler/components/SchedulerTable";
 import { BestTimeCard } from "@/features/scheduler/components/BestTimeCard";
+import { localDateTime } from "@/lib/scheduler/scheduling";
 import { PublicationReviewDialog } from "@/features/scheduler/components/PublicationReviewDialog";
 import { PublishCapabilityStrip } from "@/features/scheduler/components/PublishCapabilityStrip";
 
@@ -48,6 +49,9 @@ function SchedulerPageWorkspace() {
   const check = useServerFn(reconcileSchedulerJob);
   const closeReview = useServerFn(closePublicationReview);
   const [reviewJob, setReviewJob] = useState<SchedulerJob | null>(null);
+  const [when, setWhen] = useState(() => localDateTime(new Date(Date.now() + 3600_000)));
+  const [suggestedAt, setSuggestedAt] = useState<string | null>(null);
+  const [composerPending, setComposerPending] = useState(false);
 
   const [filter, setFilter] = useState<(typeof STATUSES)[number]>("all");
 
@@ -139,7 +143,39 @@ function SchedulerPageWorkspace() {
         />
 
         <WorkspaceAccessNotice access={access} />
-        <ScheduleComposer canEdit={access.canEdit} />
+        <ScheduleComposer
+          canEdit={access.canEdit}
+          when={when}
+          suggestedAt={suggestedAt}
+          onPendingChange={setComposerPending}
+          onWhenChange={(value) => {
+            setWhen(value);
+            setSuggestedAt(null);
+          }}
+        />
+        <details className="rounded-xl border border-border/60 bg-card/40">
+          <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            {t("bestTime.open")}
+          </summary>
+          <div className="p-2 sm:p-4">
+            <BestTimeCard
+              canEdit={access.canEdit}
+              busy={composerPending}
+              onUseTime={(at) => {
+                if (
+                  !access.canEdit ||
+                  composerPending ||
+                  !Number.isFinite(Date.parse(at)) ||
+                  Date.parse(at) <= Date.now() + 60_000
+                )
+                  return;
+                setWhen(localDateTime(new Date(at)));
+                setSuggestedAt(at);
+                document.getElementById("schedule-time")?.focus();
+              }}
+            />
+          </div>
+        </details>
         <PublishCapabilityStrip />
         <details className="rounded-xl border border-border/60 bg-card/40 px-4">
           <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -151,26 +187,21 @@ function SchedulerPageWorkspace() {
           </div>
         </details>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          <div className="space-y-3">
-            <SchedulerFilters
-              filter={filter}
-              setFilter={setFilter}
-              counts={counts}
-              total={q.data?.length ?? 0}
-              onTick={() => tickMut.mutate()}
-              tickDisabled={
-                !access.canManage ||
-                !q.wsId ||
-                tickMut.isPending ||
-                checkMut.isPending ||
-                closeMut.isPending
-              }
-              tickPending={tickMut.isPending}
-            />
-          </div>
-          <BestTimeCard platform="instagram" />
-        </div>
+        <SchedulerFilters
+          filter={filter}
+          setFilter={setFilter}
+          counts={counts}
+          total={q.data?.length ?? 0}
+          onTick={() => tickMut.mutate()}
+          tickDisabled={
+            !access.canManage ||
+            !q.wsId ||
+            tickMut.isPending ||
+            checkMut.isPending ||
+            closeMut.isPending
+          }
+          tickPending={tickMut.isPending}
+        />
 
         {q.isError ? (
           <QueryErrorState onRetry={() => void q.refetch()} pending={q.isFetching} />
@@ -180,15 +211,29 @@ function SchedulerPageWorkspace() {
           <EmptyState
             variant="card"
             icon={Calendar}
-            title={t("scheduler.emptyTitle")}
-            text={t("scheduler.emptyText")}
+            title={t(
+              (q.data?.length ?? 0) > 0 ? "scheduler.filteredEmptyTitle" : "scheduler.emptyTitle",
+            )}
+            text={t(
+              (q.data?.length ?? 0) > 0 ? "scheduler.filteredEmptyText" : "scheduler.emptyText",
+            )}
             action={
-              <Link
-                to="/app/content"
-                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-              >
-                {t("scheduler.contentLink")}
-              </Link>
+              (q.data?.length ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setFilter("all")}
+                  className="min-h-11 rounded-md border border-border px-4 py-2 text-sm font-medium"
+                >
+                  {t("scheduler.clearFilters")}
+                </button>
+              ) : (
+                <Link
+                  to="/app/content"
+                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                >
+                  {t("scheduler.contentLink")}
+                </Link>
+              )
             }
           />
         ) : (

@@ -1,211 +1,139 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Ban, Clock, Search, ClipboardCheck } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale/pt-BR";
-import { enUS } from "date-fns/locale/en-US";
 import type { SchedulerJob } from "@/lib/api/_types";
-import { STATUS_META, type JobStatus } from "../constants";
-import { publicationReviewControls } from "../reconciliation";
+import { PLATFORM_RULES, isPlatformId } from "@/lib/growth/platform-rules";
+import { browserTimeZone, formatZonedInstant } from "@/lib/time-zones";
+import { SchedulerJobStatus } from "./SchedulerJobStatus";
+import { jobDistance } from "../queue-presentation";
+import { SchedulerJobActions, type SchedulerActions } from "./SchedulerJobActions";
 
-type Props = {
-  jobs: SchedulerJob[];
-  onCancel: (jobId: string) => void;
-  cancelPending: boolean;
-  canManage: boolean;
-  onCheck: (jobId: string) => void;
-  checkPending: boolean;
-  onReview: (job: SchedulerJob) => void;
-};
-
-export function SchedulerTable({
-  jobs,
-  onCancel,
-  cancelPending,
-  canManage,
-  onCheck,
-  checkPending,
-  onReview,
-}: Props) {
+type Props = SchedulerActions & { jobs: SchedulerJob[] };
+/** Native cards on narrow screens, native table on desktop, shared statuses/actions. */
+export function SchedulerTable({ jobs, ...actions }: Props) {
   const { t, i18n } = useTranslation();
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(Date.now);
+  const [timeZone] = useState(browserTimeZone);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(timer);
   }, []);
-  const distance = (value: string | null) =>
-    value && Number.isFinite(Date.parse(value))
-      ? formatDistanceToNow(new Date(value), {
-          addSuffix: true,
-          locale: i18n.language === "en-US" ? enUS : ptBR,
-        })
-      : "—";
+  const title = (job: SchedulerJob) => job.content?.title || t("scheduler.untitled");
+  const channel = (job: SchedulerJob) => {
+    const platform = job.channel?.platform;
+    return `${platform && isPlatformId(platform) ? PLATFORM_RULES[platform].label : platform || "—"}${job.channel?.handle ? ` · ${job.channel.handle}` : ""}`;
+  };
+  const when = (job: SchedulerJob) => (
+    <>
+      <time
+        dateTime={Number.isFinite(Date.parse(job.scheduled_at)) ? job.scheduled_at : undefined}
+        className="block leading-relaxed [overflow-wrap:anywhere]"
+      >
+        {formatZonedInstant(job.scheduled_at, i18n.language, timeZone)}
+      </time>
+      <span className="mt-1 block text-xs text-muted-foreground">
+        {jobDistance(job.scheduled_at, now, i18n.language)}
+      </span>
+    </>
+  );
   return (
-    <div
-      role="region"
-      aria-label={t("scheduler.title")}
-      tabIndex={0}
-      className="section-card overflow-x-auto p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-    >
-      <table className="w-full min-w-[750px] text-sm">
-        <thead className="border-b border-border bg-background/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="px-4 py-3 font-medium">{t("scheduler.content")}</th>
-            <th className="px-4 py-3 font-medium">{t("scheduler.channel")}</th>
-            <th className="px-4 py-3 font-medium">{t("scheduler.scheduledAt")}</th>
-            <th className="px-4 py-3 font-medium">{t("scheduler.status")}</th>
-            <th className="px-4 py-3 font-medium">{t("scheduler.attempts")}</th>
-            <th className="px-4 py-3 text-right font-medium">{t("scheduler.actions")}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {jobs.map((job) => {
-            const controls = publicationReviewControls(job, now);
-            const meta = STATUS_META[job.status as JobStatus];
-            const Icon = meta?.icon ?? Clock;
-            const hasReconciliation = job.reconcile_state !== "none";
-            const hasLegacyReference =
-              !job.provider_reference && !!job.external_post_id && job.status !== "succeeded";
-            const label = ["pending", "review", "rejected", "closed"].includes(job.reconcile_state)
-              ? t(`scheduler.confirmation_${job.reconcile_state}`)
-              : t(`scheduler.${job.status}`, { defaultValue: job.status });
-            return (
+    <section aria-label={t("scheduler.queueLabel")} className="min-w-0 space-y-3">
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {t("scheduler.queueTimezone", { timeZone })}
+      </p>
+      <ul className="min-w-0 space-y-3 md:hidden">
+        {jobs.map((job) => (
+          <li key={job.id} className="min-w-0">
+            <article
+              aria-labelledby={`queue-mobile-${job.id}`}
+              className="section-card min-w-0 space-y-4 p-4"
+            >
+              <h3
+                id={`queue-mobile-${job.id}`}
+                className="text-base font-semibold leading-relaxed [overflow-wrap:anywhere]"
+              >
+                {title(job)}
+              </h3>
+              <p className="text-xs text-muted-foreground">{job.content?.type ?? "—"}</p>
+              <dl className="min-w-0 space-y-3 text-sm">
+                <div>
+                  <dt className="text-xs font-medium text-muted-foreground">
+                    {t("scheduler.channel")}
+                  </dt>
+                  <dd className="mt-1 [overflow-wrap:anywhere]">{channel(job)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-muted-foreground">
+                    {t("scheduler.scheduledAt")}
+                  </dt>
+                  <dd className="mt-1">{when(job)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-muted-foreground">
+                    {t("scheduler.status")}
+                  </dt>
+                  <dd className="mt-2">
+                    <SchedulerJobStatus job={job} now={now} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-muted-foreground">
+                    {t("scheduler.attempts")}
+                  </dt>
+                  <dd className="mt-1 tabular-nums">{job.attempts ?? 0}</dd>
+                </div>
+              </dl>
+              <SchedulerJobActions job={job} now={now} {...actions} />
+            </article>
+          </li>
+        ))}
+      </ul>
+      <div
+        role="group"
+        aria-label={t("scheduler.queueLabel")}
+        tabIndex={0}
+        className="section-card hidden overflow-x-auto p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:block"
+      >
+        <table className="w-full min-w-[750px] text-sm">
+          <caption className="sr-only">{t("scheduler.queueLabel")}</caption>
+          <thead className="border-b border-border bg-background/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              {["content", "channel", "scheduledAt", "status", "attempts", "actions"].map((key) => (
+                <th key={key} scope="col" className="px-4 py-3 font-medium">
+                  {t(`scheduler.${key}`)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {jobs.map((job) => (
               <tr key={job.id} className="transition-colors hover:bg-background/40">
-                <td className="px-4 py-3">
-                  <div className="font-medium">{job.content?.title || t("scheduler.untitled")}</div>
-                  <div className="text-xs text-muted-foreground">{job.content?.type ?? "—"}</div>
+                <th
+                  scope="row"
+                  className="max-w-64 px-4 py-3 text-left font-medium [overflow-wrap:anywhere]"
+                >
+                  <div>{title(job)}</div>
+                  <div className="mt-1 text-xs font-normal text-muted-foreground">
+                    {job.content?.type ?? "—"}
+                  </div>
+                </th>
+                <td className="max-w-52 px-4 py-3 text-muted-foreground [overflow-wrap:anywhere]">
+                  {channel(job)}
                 </td>
-                <td className="px-4 py-3 capitalize text-muted-foreground">
-                  {job.channel?.platform ?? "—"}
-                  {job.channel?.handle ? (
-                    <span className="ml-1 text-xs">· {job.channel.handle}</span>
-                  ) : null}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{distance(job.scheduled_at)}</td>
-                <td className="min-w-56 px-4 py-3">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${meta?.className ?? ""}`}
-                  >
-                    <Icon
-                      aria-hidden="true"
-                      className={`size-3 ${job.status === "processing" ? "animate-spin" : ""}`}
-                    />
-                    {label}
-                  </span>
-                  {controls.expired && (
-                    <p className="mt-1 max-w-xs text-xs text-foreground">
-                      {t("scheduler.outcomeUnknown")}
-                    </p>
-                  )}
-                  {job.reconcile_state === "pending" && (
-                    <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                      {t("scheduler.reconcilePendingHelp")}
-                    </p>
-                  )}
-                  {job.reconcile_state === "closed" && (
-                    <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                      {t("scheduler.closedReviewHelp")}
-                    </p>
-                  )}
-                  {(hasReconciliation || job.provider_reference || hasLegacyReference) && (
-                    <details className="mt-2 max-w-xs text-xs">
-                      <summary className="cursor-pointer rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                        {t("scheduler.checkDetails")}
-                      </summary>
-                      {!job.provider_reference &&
-                        job.external_post_id &&
-                        job.status !== "succeeded" && (
-                          <p className="mt-2">{t("scheduler.legacyReferenceHelp")}</p>
-                        )}
-                      <dl className="mt-2 space-y-1 break-words text-muted-foreground">
-                        <div>
-                          <dt className="inline font-medium">
-                            {t("scheduler.providerReference")}:{" "}
-                          </dt>
-                          <dd className="inline break-all font-mono">
-                            {job.provider_reference ??
-                              (job.status !== "succeeded" ? job.external_post_id : null) ??
-                              "—"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="inline font-medium">
-                            {t("scheduler.confirmationChecks")}:{" "}
-                          </dt>
-                          <dd className="inline">{job.reconcile_attempts}</dd>
-                        </div>
-                        <div>
-                          <dt className="inline font-medium">{t("scheduler.lastChecked")}: </dt>
-                          <dd className="inline">{distance(job.reconciled_at)}</dd>
-                        </div>
-                        {job.reconcile_after && (
-                          <div>
-                            <dt className="inline font-medium">{t("scheduler.nextCheck")}: </dt>
-                            <dd className="inline">{distance(job.reconcile_after)}</dd>
-                          </div>
-                        )}
-                        {job.reconcile_note && (
-                          <div>
-                            <dt className="sr-only">{t("scheduler.checkNote")}</dt>
-                            <dd>{job.reconcile_note}</dd>
-                          </div>
-                        )}
-                      </dl>
-                    </details>
-                  )}
-                  {job.last_error && (
-                    <p className="mt-1 max-w-xs break-words text-xs text-destructive">
-                      {job.last_error}
-                    </p>
-                  )}
+                <td className="min-w-52 px-4 py-3">{when(job)}</td>
+                <td className="min-w-56 max-w-sm px-4 py-3">
+                  <SchedulerJobStatus job={job} now={now} />
                 </td>
                 <td className="px-4 py-3 tabular-nums text-muted-foreground">
                   {job.attempts ?? 0}
                 </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex flex-col items-end gap-2">
-                    {controls.canCancel && (
-                      <button
-                        onClick={() => onCancel(job.id)}
-                        disabled={cancelPending}
-                        className="inline-flex min-h-11 items-center gap-1 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-50"
-                      >
-                        <Ban aria-hidden="true" className="size-3" /> {t("scheduler.cancel")}
-                      </button>
-                    )}
-                    {(controls.expired ||
-                      controls.pending ||
-                      (controls.review && !!job.provider_reference)) && (
-                      <button
-                        onClick={() => onCheck(job.id)}
-                        disabled={!canManage || !controls.canCheck || checkPending}
-                        className="inline-flex min-h-11 items-center gap-1 rounded-md border border-border px-3 py-2 text-xs text-foreground hover:border-primary disabled:opacity-50"
-                      >
-                        <Search aria-hidden="true" className="size-3" />{" "}
-                        {t("scheduler.checkPublication")}
-                      </button>
-                    )}
-                    {controls.review && (
-                      <button
-                        onClick={() => onReview(job)}
-                        disabled={!canManage || !controls.canClose || checkPending}
-                        className="inline-flex min-h-11 items-center gap-1 rounded-md border border-border px-3 py-2 text-xs text-foreground hover:border-primary disabled:opacity-50"
-                      >
-                        <ClipboardCheck aria-hidden="true" className="size-3" />{" "}
-                        {t("scheduler.closeReview")}
-                      </button>
-                    )}
-                    {!controls.canCancel &&
-                      !controls.expired &&
-                      !controls.pending &&
-                      !controls.review && <span className="text-xs text-muted-foreground">—</span>}
-                  </div>
+                <td className="px-4 py-3">
+                  <SchedulerJobActions job={job} now={now} {...actions} />
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

@@ -1,173 +1,196 @@
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { BarChart3, CalendarClock, Info, Sparkles } from "lucide-react";
-import { GrowthService } from "@/lib/services";
-import { useCurrentWorkspaceId } from "@/lib/workspace/use-workspace";
-import { PLATFORM_RULES, type PlatformId } from "@/lib/growth/platform-rules";
+import { CalendarClock, RefreshCw } from "lucide-react";
+import { getBestTimeToPost } from "@/lib/api/growth.functions";
+import { PUBLISH_ENABLED, PLATFORM_RULES, isPlatformId } from "@/lib/growth/platform-rules";
+import { browserTimeZone, isTimeZone } from "@/lib/time-zones";
+import { useSchedulingOptions } from "../hooks/useSchedulingOptions";
+import { parseTimingResult, timingContext } from "../best-time";
+import { BestTimeResult } from "./BestTimeResult";
 
-interface BestTimeResult {
-  platform: string;
-  best: { at: string; label: string; confidence: "observed" | "baseline"; reason: string };
-  topSlots: Array<{
-    weekday: number;
-    hourUtc: number;
-    score: number;
-    samples: number;
-    confidence: "observed" | "baseline";
-    reason: string;
-  }>;
-  usedFallback: boolean;
-  observationsCount: number;
-  cadence: { perWeek: number; rationale: string; source: string };
-}
-
-const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
-function localHour(hourUtc: number): number {
-  return (hourUtc - 3 + 24) % 24;
-}
-
-function fmtWhen(iso: string): string {
-  return new Date(iso).toLocaleString("pt-BR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Sao_Paulo",
-  });
-}
-
-/**
- * Best time to post, per platform.
- *
- * Deliberately honest about provenance: when there is not enough of the user's
- * own history, the card says "janela padrão" instead of dressing a generic
- * recommendation up as personalised data. That distinction is the difference
- * between a tool people trust and one they learn to ignore.
- */
-export function BestTimeCard({ platform = "instagram" }: { platform?: PlatformId }) {
-  const [wsId] = useCurrentWorkspaceId();
-  const fetchBest = useServerFn(GrowthService.getBestTimeToPost);
-
+export function BestTimeCard({
+  canEdit,
+  busy,
+  onUseTime,
+}: {
+  canEdit: boolean;
+  busy: boolean;
+  onUseTime: (at: string) => void;
+}) {
+  const { t } = useTranslation();
+  const options = useSchedulingOptions();
+  const fetchBest = useServerFn(getBestTimeToPost);
+  const [selection, setSelection] = useState("");
+  const [timeZone, setTimeZone] = useState(browserTimeZone);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+  const context = timingContext(selection, options.data?.channels ?? []);
   const q = useQuery({
-    queryKey: ["best-time", wsId, platform],
+    queryKey: [
+      "best-time",
+      options.wsId,
+      context?.platform,
+      context?.channelId ?? "reference",
+      timeZone,
+    ],
     queryFn: async () => {
-      const r = await fetchBest({ data: { workspaceId: wsId!, platform } });
-      return r as unknown as BestTimeResult;
+      const raw = await fetchBest({ data: { workspaceId: options.wsId!, ...context!, timeZone } });
+      return parseTimingResult(raw, options.wsId!, context!, timeZone);
     },
-    enabled: !!wsId,
+    enabled: !!options.wsId && !!context && !options.isError && !!options.data,
     staleTime: 5 * 60_000,
     retry: false,
   });
-
-  const data = q.data;
-  const rules = PLATFORM_RULES[platform];
-
+  const zones = [
+    ...new Set([
+      browserTimeZone(),
+      "UTC",
+      "America/Sao_Paulo",
+      "America/Manaus",
+      "America/New_York",
+      "Europe/Lisbon",
+      "Europe/London",
+      "Asia/Kolkata",
+      "Asia/Kathmandu",
+      "Asia/Tokyo",
+      "Australia/Lord_Howe",
+      "Pacific/Auckland",
+    ]),
+  ].filter(isTimeZone);
   return (
-    <div className="section-card space-y-4 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <CalendarClock className="size-4 text-accent" />
-          <h3 className="text-sm font-semibold">Melhor horário</h3>
-          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">
-            {rules?.label ?? platform}
-          </span>
-        </div>
-        {data && (
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-              data.best.confidence === "observed"
-                ? "bg-emerald-500/10 text-emerald-500"
-                : "bg-amber-500/10 text-amber-500"
-            }`}
+    <section aria-labelledby="best-time-heading" className="section-card min-w-0 space-y-4 p-5">
+      <h2 id="best-time-heading" className="flex items-center gap-2 text-sm font-semibold">
+        <CalendarClock aria-hidden="true" className="size-4 shrink-0 text-accent" />
+        {t("bestTime.title")}
+      </h2>
+      <p className="text-xs leading-relaxed text-muted-foreground">{t("bestTime.intro")}</p>
+      {options.isError ? (
+        <div role="alert" className="space-y-2 text-sm">
+          <p>{t("bestTime.optionsError")}</p>
+          <button
+            type="button"
+            disabled={options.isFetching}
+            onClick={() => void options.refetch()}
+            className="min-h-11 rounded-md border border-border px-3 py-2 disabled:opacity-50"
           >
-            {data.best.confidence === "observed" ? (
-              <>
-                <BarChart3 className="size-2.5" /> Seus dados
-              </>
-            ) : (
-              <>
-                <Info className="size-2.5" /> Janela padrão
-              </>
-            )}
-          </span>
-        )}
-      </div>
-
-      {q.isLoading && <p className="text-xs text-muted-foreground">Calculando…</p>}
-
-      {q.isError && (
-        <p className="text-xs text-muted-foreground">
-          Não foi possível calcular agora. Os horários padrão continuam valendo.
-        </p>
-      )}
-
-      {data && (
+            {t("bestTime.retry")}
+          </button>
+        </div>
+      ) : (
         <>
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-              Próxima janela
-            </div>
-            <div className="mt-1 text-lg font-bold leading-tight text-foreground">
-              {fmtWhen(data.best.at)}
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{data.best.reason}</p>
-          </div>
-
-          {data.topSlots.length > 1 && (
-            <div className="space-y-1.5">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                Top horários
-              </div>
-              {data.topSlots.slice(0, 4).map((s) => (
-                <div key={`${s.weekday}-${s.hourUtc}`} className="flex items-center gap-2">
-                  <span className="w-20 shrink-0 text-xs tabular-nums text-foreground">
-                    {WEEKDAYS[s.weekday]} {String(localHour(s.hourUtc)).padStart(2, "0")}:00
-                  </span>
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
-                    <div
-                      className="h-full rounded-full bg-gradient-brand transition-all"
-                      style={{ width: `${Math.max(8, Math.round(s.score * 100))}%` }}
-                    />
-                  </div>
-                  <span className="w-10 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
-                    {s.confidence === "observed" ? `${s.samples}×` : "padrão"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="rounded-lg border border-border bg-background/60 px-3 py-2">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="size-3 text-accent" />
-              <span className="text-[11px] font-medium text-foreground">
-                Cadência sustentável: {data.cadence.perWeek}×/semana
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              {data.cadence.rationale}
+          <div className="space-y-3">
+            <label
+              htmlFor="best-time-context"
+              className="block min-w-0 space-y-1.5 text-xs font-medium"
+            >
+              <span>{t("bestTime.context")}</span>
+              <select
+                id="best-time-context"
+                value={selection}
+                onChange={(e) => setSelection(e.target.value)}
+                disabled={options.isPending}
+                aria-describedby="best-time-context-hint"
+                className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">{t("bestTime.chooseContext")}</option>
+                {(options.data?.channels.length ?? 0) > 0 && (
+                  <optgroup label={t("bestTime.workspaceChannels")}>
+                    {options.data?.channels
+                      .filter((c) => isPlatformId(c.platform))
+                      .map((c) => (
+                        <option key={c.id} value={`channel:${c.id}`}>
+                          {PLATFORM_RULES[c.platform as keyof typeof PLATFORM_RULES].label} ·{" "}
+                          {c.handle || t("bestTime.unnamedChannel")}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                <optgroup label={t("bestTime.platformReferences")}>
+                  {[...PUBLISH_ENABLED].map((p) => (
+                    <option key={p} value={`reference:${p}`}>
+                      {PLATFORM_RULES[p].label} · {t("bestTime.reference")}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
+            <p
+              id="best-time-context-hint"
+              className="text-xs leading-relaxed text-muted-foreground"
+            >
+              {t("bestTime.contextHint")}
+            </p>
+            <label
+              htmlFor="best-time-zone"
+              className="block min-w-0 space-y-1.5 text-xs font-medium"
+            >
+              <span>{t("bestTime.timeZone")}</span>
+              <select
+                id="best-time-zone"
+                value={timeZone}
+                onChange={(e) => setTimeZone(e.target.value)}
+                aria-describedby="best-time-zone-hint"
+                className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                {zones.map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p id="best-time-zone-hint" className="text-xs leading-relaxed text-muted-foreground">
+              {t("bestTime.zoneHint")}
             </p>
           </div>
-
-          {data.usedFallback && (
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Ainda sem publicações medidas suficientes para personalizar. Após ~6 posts com
-              métricas, este painel passa a usar o engajamento real da sua conta.
+          {options.isPending ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t("bestTime.loadingOptions")}
             </p>
+          ) : !context ? (
+            <p role="status" className="text-xs leading-relaxed text-muted-foreground">
+              {t(selection ? "bestTime.selectAgain" : "bestTime.noSelection")}
+            </p>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={q.isFetching}
+                onClick={() => void q.refetch()}
+                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border px-3 py-2 text-xs disabled:opacity-50"
+              >
+                <RefreshCw aria-hidden="true" className="size-3.5" />
+                {t("bestTime.refresh")}
+              </button>
+              {q.isFetching && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  {t("bestTime.loading")}
+                </p>
+              )}
+              {q.isError ? (
+                <p role="alert" className="text-sm leading-relaxed">
+                  {t("bestTime.error")}
+                </p>
+              ) : (
+                q.data && (
+                  <BestTimeResult
+                    data={q.data}
+                    now={now}
+                    canEdit={canEdit}
+                    pending={q.isFetching || busy}
+                    onUseTime={onUseTime}
+                  />
+                )
+              )}
+            </>
           )}
         </>
       )}
-
-      {rules && (
-        <div className="border-t border-border pt-3">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-            Regra do formato
-          </div>
-          <p className="mt-1 text-[11px] leading-relaxed text-foreground/80">{rules.strategy}</p>
-        </div>
-      )}
-    </div>
+    </section>
   );
 }

@@ -1,32 +1,38 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useServerFn } from "@tanstack/react-start";
-import { enqueuePublication, getSchedulingOptions } from "@/lib/api/scheduler.functions";
-import { useWorkspaceMutation, useWorkspaceQuery } from "@/lib/query/use-workspace-query";
-import {
-  futureScheduleIso,
-  localDateTime,
-  type SchedulingOptions,
-} from "@/lib/scheduler/scheduling";
+import { enqueuePublication } from "@/lib/api/scheduler.functions";
+import { useWorkspaceMutation } from "@/lib/query/use-workspace-query";
+import { selectedScheduleIso } from "@/lib/scheduler/scheduling";
+import { browserTimeZone, formatZonedInstant } from "@/lib/time-zones";
+import { useSchedulingOptions } from "../hooks/useSchedulingOptions";
 import { QueryErrorState } from "@/features/shell/components/QueryErrorState";
 import { PLATFORM_RULES, type PlatformId } from "@/lib/growth/platform-rules";
 import { SchedulePreparation } from "./SchedulePreparation";
 
-export function ScheduleComposer({ canEdit }: { canEdit: boolean }) {
-  const { t } = useTranslation();
-  const fetchOptions = useServerFn(getSchedulingOptions);
+interface Props {
+  canEdit: boolean;
+  when: string;
+  suggestedAt: string | null;
+  onWhenChange: (value: string) => void;
+  onPendingChange: (pending: boolean) => void;
+}
+export function ScheduleComposer({
+  canEdit,
+  when,
+  suggestedAt,
+  onWhenChange,
+  onPendingChange,
+}: Props) {
+  const { t, i18n } = useTranslation();
   const enqueue = useServerFn(enqueuePublication);
-  const q = useWorkspaceQuery<SchedulingOptions>(
-    (ws) => ["scheduler-options", ws],
-    ({ workspaceId }) => fetchOptions({ data: { workspaceId } }),
-  );
+  const q = useSchedulingOptions();
   const [contentId, setContentId] = useState("");
   const [channelIds, setChannelIds] = useState<string[]>([]);
-  const [when, setWhen] = useState(() => localDateTime(new Date(Date.now() + 3600_000)));
   const [validation, setValidation] = useState("");
   const mutation = useWorkspaceMutation(
     async () => {
-      const scheduledAt = futureScheduleIso(when);
+      const scheduledAt = selectedScheduleIso(when, suggestedAt);
       if (
         !canEdit ||
         !q.wsId ||
@@ -54,6 +60,9 @@ export function ScheduleComposer({ canEdit }: { canEdit: boolean }) {
       },
     },
   );
+  useEffect(() => {
+    onPendingChange(mutation.isPending);
+  }, [mutation.isPending, onPendingChange]);
   const disabled = !canEdit || q.isPending || q.isError || mutation.isPending;
   const eligible = new Set(q.data?.channels.filter((c) => c.eligible).map((c) => c.id));
   const validSelection =
@@ -83,7 +92,7 @@ export function ScheduleComposer({ canEdit }: { canEdit: boolean }) {
           onSubmit={(event) => {
             event.preventDefault();
             if (disabled) return;
-            if (!futureScheduleIso(when) || !validSelection) {
+            if (!selectedScheduleIso(when, suggestedAt) || !validSelection) {
               setValidation(t("scheduler.scheduleInvalid"));
               return;
             }
@@ -117,13 +126,20 @@ export function ScheduleComposer({ canEdit }: { canEdit: boolean }) {
                   type="datetime-local"
                   required
                   value={when}
-                  onChange={(e) => setWhen(e.target.value)}
+                  onChange={(e) => onWhenChange(e.target.value)}
                   aria-describedby="schedule-time-hint"
                   className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 />
                 <span id="schedule-time-hint" className="block text-xs text-muted-foreground">
-                  {t("scheduler.localTimezone")}
+                  {t("scheduler.localTimezoneNamed", { timeZone: browserTimeZone() })}
                 </span>
+                {suggestedAt && (
+                  <span role="status" className="block text-xs leading-relaxed text-foreground">
+                    {t("scheduler.suggestionFilled", {
+                      when: formatZonedInstant(suggestedAt, i18n.language, browserTimeZone()),
+                    })}
+                  </span>
+                )}
               </label>
             </div>
             <fieldset className="min-w-0 space-y-2">

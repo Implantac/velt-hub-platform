@@ -61,7 +61,7 @@ export interface PlatformRules {
   requiresMedia: boolean;
   /** Whether links are clickable in-post (drives CTA strategy). */
   linksClickable: boolean;
-  /** Baseline posting windows in the audience's local time (24h, UTC-3). */
+  /** Editorial baseline windows in local 24-hour time; the caller supplies the IANA zone. */
   baselineWindows: Array<{ weekday: number[]; startHour: number; endHour: number }>;
   /** One-line strategic guidance surfaced in the composer. */
   strategy: string;

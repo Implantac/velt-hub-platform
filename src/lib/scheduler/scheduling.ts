@@ -7,6 +7,26 @@ export function futureScheduleIso(value: string, now = Date.now()): string | nul
   if (localDateTime(time) !== value) return null;
   return time.toISOString();
 }
+/** A chosen suggestion keeps its exact instant through a repeated DST hour.
+ * Editing the native field must clear suggestedAt; no invisible timezone override is accepted.
+ */
+export function selectedScheduleIso(
+  value: string,
+  suggestedAt: string | null,
+  now = Date.now(),
+): string | null {
+  if (!suggestedAt) return futureScheduleIso(value, now);
+  const date = new Date(suggestedAt);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.getTime() <= now ||
+    date.getUTCSeconds() !== 0 ||
+    date.getUTCMilliseconds() !== 0 ||
+    localDateTime(date) !== value
+  )
+    return null;
+  return date.toISOString();
+}
 export function localDateTime(date: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;

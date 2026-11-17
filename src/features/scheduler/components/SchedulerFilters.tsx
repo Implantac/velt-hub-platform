@@ -34,9 +34,10 @@ export function SchedulerFilters({
           return (
             <button
               key={s}
+              type="button"
               onClick={() => setFilter(s)}
               aria-pressed={active}
-              className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition ${
+              className={`inline-flex min-h-11 items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition ${
                 active
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-border bg-card/40 text-muted-foreground hover:text-foreground"
@@ -52,11 +53,12 @@ export function SchedulerFilters({
       </div>
 
       <button
+        type="button"
         onClick={onTick}
         disabled={tickDisabled}
-        className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
       >
-        <Play className="size-3.5" />
+        <Play aria-hidden="true" className="size-3.5" />
         {t(tickPending ? "scheduler.running" : "scheduler.run")}
       </button>
     </div>
