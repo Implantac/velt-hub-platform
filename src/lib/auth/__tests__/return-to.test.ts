@@ -40,4 +40,15 @@ describe("safe post-login destination", () => {
     });
     expect(loginSearch({})).toEqual({});
   });
+  it("preserves only the normalized callback rejection and never provider details", () => {
+    expect(
+      loginSearch({
+        mode: "reset",
+        auth_error: "invalid_link",
+        error_description: "test-only",
+        access_token: "test-only",
+      }),
+    ).toEqual({ mode: "reset", auth_error: "invalid_link" });
+    expect(loginSearch({ auth_error: "raw provider error" })).toEqual({});
+  });
 });

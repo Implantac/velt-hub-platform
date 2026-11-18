@@ -85,6 +85,17 @@ Detalhes em [QA_ANALYTICS_RODADA_6.md](./QA_ANALYTICS_RODADA_6.md) e contrato em
 
 Método, diagnósticos e limites em [QA_UX_RODADA_7.md](./QA_UX_RODADA_7.md). Nenhuma migration, conexão/postagem social ou coleta externa positiva foi executada. Upload seguro de mídia, calendário/fila móvel, contexto/fuso/tradução do cartão de melhor horário, suporte/documentos legais/equipe e comprovação operacional permanecem frentes posteriores. Publicação remota e limpeza final têm relatório próprio; sucesso local não as comprova.
 
+## Rodada 13: acesso e recuperação para piloto assistido — evolução local
+
+- **Sessão antes da senha:** link/flag não são autorização. Inicialização e usuário são conferidos antes do formulário e a identidade é revalidada antes da alteração; logout, troca de conta e retornos antigos não produzem sucesso nessa tela.
+- **Recuperação sem beco sem saída:** link inválido oferece nova solicitação; indisponibilidade temporária oferece retry. Falha transitória do exchange inicial exige reinicialização explícita do SDK, sem replay manual de tokens.
+- **Cadastro/confirmação:** mensagens neutras com o endereço submetido, destino de reenvio coerente com o envio, validação de nome compartilhada, erros inline e campos preservados. Intervalo local de e-mail não substitui limites de abuso no servidor.
+- **Interface:** senha visível/oculta por controle rotulado, trava síncrona contra duplo envio, PT/EN e composição sob `features/auth`; metadados/SSR públicos e proteções privadas preservados.
+- **QA:** 1.663 testes/91 arquivos, typecheck/lint/build aprovados; 76 checks no build real e 28 Axe sem violações detectadas nos estados selecionados; HTTP local com 6 combinações rota/idioma e 11 assets válidos. Respostas de Auth foram sintéticas somente no harness externo: não houve cadastro, envio de e-mail, alteração de senha, escrita no banco ou publicação social reais.
+- **Limites e publicação:** rodada ainda não enviada ao GitHub/Vercel. Nova auditoria continua reprovada com 11 findings altos na árvore existente; nenhuma exceção/fork/alteração de dependência foi aplicada. SMTP, Auth real, CI condicionado e homologação comercial continuam pendentes.
+
+Método, correção de fixture, CSP local e limites em [QA_ACESSO_RODADA_13.md](./QA_ACESSO_RODADA_13.md). Os resultados antigos de auditoria sem findings são históricos e não descrevem a auditoria atual.
+
 ## Rótulo de portfólio não é modo de simulação
 
 `VITE_PORTFOLIO_MODE=true` exibe uma identificação pública e dentro do aplicativo. Não desativa autenticação, não remove RLS, não fornece credenciais públicas e não inventa métricas ou publicações.

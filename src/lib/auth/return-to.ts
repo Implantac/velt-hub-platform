@@ -30,9 +30,11 @@ export function safeAppReturnTo(value: unknown): string {
 export function loginSearch(search: Record<string, unknown>): {
   redirect?: string;
   mode?: "reset";
+  auth_error?: "invalid_link";
 } {
   return {
     ...(typeof search.redirect === "string" ? { redirect: safeAppReturnTo(search.redirect) } : {}),
     ...(search.mode === "reset" ? { mode: "reset" as const } : {}),
+    ...(search.auth_error === "invalid_link" ? { auth_error: "invalid_link" as const } : {}),
   };
 }

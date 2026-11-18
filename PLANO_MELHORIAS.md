@@ -1,5 +1,18 @@
 # Plano de melhorias e correções — VELT
 
+## Rodada 13 — acesso para piloto assistido (local, não publicada)
+
+- [x] Confirmar sessão antes de exibir a troca de senha; distinguir link inválido de indisponibilidade temporária, inclusive falha na inicialização do SDK.
+- [x] Descartar respostas antigas em logout/troca de identidade e revalidar a conta antes de atualizar a senha.
+- [x] Bloquear duplo envio, oferecer feedback de limite/reenvio e preservar campos em falha, sem afirmar entrega de e-mail.
+- [x] Usar destinos de confirmação/reenvio consistentes, validação compartilhada de nome e visibilidade de senha acessível.
+- [x] Manter PT/EN e rotas de composição; validar 1.663 testes/91 arquivos, typecheck/lint/build, 76 checks de navegador/28 Axe e 6 respostas SSR/11 assets locais.
+- [ ] Homologar SMTP, redirecionamentos autorizados e ciclo real de confirmação/recuperação em ambiente isolado. Fixtures do harness não comprovam entrega.
+- [ ] Resolver adequadamente a pendência de dependências: nova auditoria continua reprovada com 11 findings altos. Nenhum fork, exceção ou mudança de lock foi adotado.
+- [ ] Revisar e autorizar sincronização/publicação desta rodada; GitHub/Vercel não foram alterados.
+
+Método e limites em [QA_ACESSO_RODADA_13.md](./docs/QA_ACESSO_RODADA_13.md). As verificações históricas de audit zero abaixo não substituem a auditoria atual reprovada. Não há liberação comercial.
+
 ## Rodada de portfólio — 12/11/2026
 
 A rodada descrita abaixo, de 11/11, é histórica. Em 12/11 foram aplicadas correções de primeiro acesso/navegação, melhorias de primeiro uso, conteúdo móvel e acessibilidade. O segredo de cron já foi configurado via Vault no Supabase exclusivo; as instruções antigas de `ALTER DATABASE` não são o caminho operacional desse ambiente.
