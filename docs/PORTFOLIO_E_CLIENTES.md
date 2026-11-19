@@ -2,6 +2,33 @@
 
 Atualizado em 12/11/2026. Este documento descreve o código, não certifica integrações externas nem substitui uma homologação de produção.
 
+## Estado mais recente — rodada 16 local, evoluções 15–16 não publicadas
+
+A publicação de referência continua sendo a rodada 14/main `2c32eff40f6d2c88eaaffd2e8eaf329b161066ab`. As melhorias do painel e do USE Brain desta sequência permanecem locais; não houve novo push/deploy/CI remoto, migration, banco, credencial ou configuração de produção nesta rodada.
+
+- **USE Brain nativo:** ler memórias/recomendações é separado de gerar um novo conjunto por regras. Abrir/atualizar não escreve nem chama IA; geração exige confirmação. Esse comando não recalcula a pontuação nem as cinco respostas do dashboard, e não é o Brain Lab/Coach.
+- **Leitura e acesso:** total exato separado da prévia50, ordenação estável, null/erro diferentes de vazio; falhas e retry por painel. Cache/formulário/feedback por usuário e workspace, com membership conhecida. Viewer só consulta.
+- **Confirmação de gravação:** texto normalizado2–4000 e linha confirmada antes de limpar; status “marcar aplicada” é registro manual, sem executar sugestão. Lote novo só após leituras válidas, sem expirar/apagar o histórico anterior. Evento secundário com falha é aviso, não motivo para repetir o lote salvo.
+- **Recuperação:** sem retries automáticos de POST; trava síncrona local e releitura antes de decidir reenviar resposta incerta. Não se promete exactly-once entre processos; gerações explícitas mantêm histórico e podem repetir sugestões. Avisos resolvidos são removidos após recuperação do painel correspondente.
+- **QA local:** 2.067 testes/99 arquivos, typecheck/lint/build Vercel; 38 checks de navegador e 21 Axe sem violações detectadas nos estados selecionados; 12 HTML/25 assets. Os 18 POSTs nativos do navegador foram interceptados em transporte sintético, sem escrita remota, IA ou provedor real.
+- **Segurança e operação:** nova auditoria pública reportou zero achados com locks intactos, sem identificar patch para o risco histórico. Não houve fork/waiver/alteração de threshold. Auth/RLS/SMTP/provedores reais, backup/LGPD e liberação comercial continuam pendentes de trabalho/homologação próprios.
+
+Detalhes em [QA_BRAIN_RODADA_16.md](./QA_BRAIN_RODADA_16.md). Patches incremental16 e acumulado15–16, conferidos sobre suas bases, destinam-se a uma futura integração revisada e autorizada. O material das rodadas anteriores abaixo permanece histórico, sem substituir este estado. **Piloto assistido condicionado, não liberação comercial.**
+
+## Rodada 15 — painel local, base publicada na rodada 14
+
+A base de acesso da rodada 13 já foi publicada na rodada 14: GitHub/main `2c32eff40f6d2c88eaaffd2e8eaf329b161066ab`, Vercel `dpl_G4mDE3C5jH5AeHwPPz2psJxNoC1V`. A evolução de painel descrita aqui **ainda é local**; esta rodada não alterou GitHub, Vercel, Supabase, credenciais ou configurações remotas.
+
+- **Totais confiáveis:** contagens exatas por workspace; total de jobs futuros `pending` separado da lista de até cinco. Erro/null não viram zero; missões dispensadas/concluídas não são prioridades pendentes.
+- **Leitura sem geração oculta:** Atualizar dados só refaz os GETs ativos do painel. Pontuação/respostas são lidas do que já está salvo, com datas e expiração; geração de análise fica como ação explícita no USE Brain.
+- **Primeiro uso e acesso:** duas etapas essenciais (marca/conteúdo), conexão social opcional; consultas avançadas somente após abrir os detalhes. Viewer não é convidado a editar; membership desconhecida/com erro oculta dados. Cache/feedback isolados por usuário e workspace.
+- **Falhas recuperáveis:** erro inicial não é workspace vazio. Refresh com cache conserva valores com aviso; painéis avançados têm retry separado. Camadas de concorrentes/memória/avaliações não usam listas truncadas como totais ou médias históricas.
+- **Apresentação e limites:** estáticos/números PT/EN, fuso IANA São Paulo explícito e links salvos restritos a destinos internos seguros. Textos salvos mantêm o idioma original. O dashboard não certifica saúde global da infraestrutura ou resultados comerciais.
+- **QA local:** typecheck/lint/build Vercel, 1.878 testes/95 arquivos, 39 checks de navegador e 21 snapshots Axe sem violações detectadas nos estados selecionados; 10 respostas HTML/25 assets. Navegador com transporte Auth/RPC sintético externo ao produto, sem conta/banco/SMTP/IA/provedor reais.
+- **Segurança:** as duas novas consultas de auditoria retornaram zero achados no lock inalterado, diferente dos 11 altos históricos da publicação 14. O status público do advisory veio com data posterior à referência da conversa; não se usou esse retorno como prova de patch ou aceite de risco. Nenhum fork, waiver ou alteração de dependência foi integrado.
+
+Método e ressalvas em [QA_PAINEL_RODADA_15.md](./QA_PAINEL_RODADA_15.md). O material abaixo preserva a evolução histórica; afirmações de “ainda não publicado” ou “auditoria atual” dentro de uma rodada antiga descrevem seu encerramento, não substituem este estado. Permanece piloto assistido condicionado, sem liberação comercial.
+
 ## Primeira rodada de melhorias (histórico; alterações posteriores abaixo)
 
 - **Estado de workspace compartilhado:** `useSyncExternalStore`, persistência com tolerância a storage bloqueado, sincronização entre abas e validação da seleção contra memberships.
@@ -85,16 +112,16 @@ Detalhes em [QA_ANALYTICS_RODADA_6.md](./QA_ANALYTICS_RODADA_6.md) e contrato em
 
 Método, diagnósticos e limites em [QA_UX_RODADA_7.md](./QA_UX_RODADA_7.md). Nenhuma migration, conexão/postagem social ou coleta externa positiva foi executada. Upload seguro de mídia, calendário/fila móvel, contexto/fuso/tradução do cartão de melhor horário, suporte/documentos legais/equipe e comprovação operacional permanecem frentes posteriores. Publicação remota e limpeza final têm relatório próprio; sucesso local não as comprova.
 
-## Rodada 13: acesso e recuperação para piloto assistido — evolução local
+## Rodada 13: acesso e recuperação para piloto assistido — histórico, publicado na rodada 14
 
 - **Sessão antes da senha:** link/flag não são autorização. Inicialização e usuário são conferidos antes do formulário e a identidade é revalidada antes da alteração; logout, troca de conta e retornos antigos não produzem sucesso nessa tela.
 - **Recuperação sem beco sem saída:** link inválido oferece nova solicitação; indisponibilidade temporária oferece retry. Falha transitória do exchange inicial exige reinicialização explícita do SDK, sem replay manual de tokens.
 - **Cadastro/confirmação:** mensagens neutras com o endereço submetido, destino de reenvio coerente com o envio, validação de nome compartilhada, erros inline e campos preservados. Intervalo local de e-mail não substitui limites de abuso no servidor.
 - **Interface:** senha visível/oculta por controle rotulado, trava síncrona contra duplo envio, PT/EN e composição sob `features/auth`; metadados/SSR públicos e proteções privadas preservados.
 - **QA:** 1.663 testes/91 arquivos, typecheck/lint/build aprovados; 76 checks no build real e 28 Axe sem violações detectadas nos estados selecionados; HTTP local com 6 combinações rota/idioma e 11 assets válidos. Respostas de Auth foram sintéticas somente no harness externo: não houve cadastro, envio de e-mail, alteração de senha, escrita no banco ou publicação social reais.
-- **Limites e publicação:** rodada ainda não enviada ao GitHub/Vercel. Nova auditoria continua reprovada com 11 findings altos na árvore existente; nenhuma exceção/fork/alteração de dependência foi aplicada. SMTP, Auth real, CI condicionado e homologação comercial continuam pendentes.
+- **Limites e publicação no encerramento 13:** naquela entrega, o código ainda não havia sido enviado ao GitHub/Vercel e a auditoria registrava 11 findings altos. A publicação foi concluída posteriormente na rodada 14, sem exceção/fork/alteração de dependência. SMTP, Auth real, CI condicionado e homologação comercial continuam pendentes.
 
-Método, correção de fixture, CSP local e limites em [QA_ACESSO_RODADA_13.md](./QA_ACESSO_RODADA_13.md). Os resultados antigos de auditoria sem findings são históricos e não descrevem a auditoria atual.
+Método, correção de fixture, CSP local e limites em [QA_ACESSO_RODADA_13.md](./QA_ACESSO_RODADA_13.md). Os resultados de auditoria de cada rodada são históricos; veja a consulta mais recente e sua ressalva de segurança na rodada 15 acima.
 
 ## Rótulo de portfólio não é modo de simulação
 

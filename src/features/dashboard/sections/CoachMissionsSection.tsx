@@ -1,82 +1,93 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Brain, Target } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Empty, LinkAction, Panel, RecIcon, SeverityPill, StatusPill } from "../components/atoms";
-import type { Row } from "@/lib/brain/types";
+import { PanelFeedback } from "../components/PanelFeedback";
+import { dashboardActionHref, dashboardLoadState } from "../presentation";
+import type { DashboardOverview, DashboardRecommendation, PanelQuery } from "../types";
 import { readCta } from "@/lib/json";
 
-/**
- * `priorityMissions` is a projection — the dashboard query selects
- * `id, title, status, priority` — so the prop declares exactly that. Typing it as
- * the whole row would let a caller pass an object that the query never returns.
- */
-export type PriorityMission = Pick<Row<"missions">, "id" | "title" | "status" | "priority">;
-
+export type PriorityMission = DashboardOverview["missions"][number];
 type Props = {
-  topRecs: Row<"coach_recommendations">[];
+  recommendations: PanelQuery<DashboardRecommendation[]>;
   priorityMissions: PriorityMission[];
 };
 
-export function CoachMissionsSection({ topRecs, priorityMissions }: Props) {
+export function CoachMissionsSection({ recommendations, priorityMissions }: Props) {
+  const { t } = useTranslation();
+  const missions = priorityMissions
+    .filter((mission) => mission.status === "pending" || mission.status === "in_progress")
+    .slice(0, 4);
   return (
     <section className="grid gap-4 lg:grid-cols-3">
       <Panel
         className="lg:col-span-2"
-        title="Próximos passos do Coach"
+        title={t("dashboard.coachSteps")}
         icon={Brain}
-        action={<LinkAction to="/app/coach" label="Abrir Coach" />}
+        action={<LinkAction to="/app/coach" label={t("dashboard.openCoach")} />}
       >
-        {topRecs.length === 0 ? (
-          <Empty text="Sem recomendações ativas. Clique em Atualizar GPS para gerar." />
-        ) : (
-          <ul className="space-y-2">
-            {topRecs.map((r) => {
-              const cta = readCta(r.cta);
-              return (
-                <li
-                  key={r.id}
-                  className="rounded-xl sm:rounded-2xl border border-border/50 bg-background/30 p-4 sm:p-5 transition-all duration-300 hover:border-primary/40 hover:bg-background/50 hover:shadow-soft"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <RecIcon kind={r.kind} />
-                      <div>
-                        <div className="font-bold tracking-tight text-foreground">{r.title}</div>
-                        {r.body && <p className="mt-1 text-sm text-muted-foreground">{r.body}</p>}
+        <PanelFeedback
+          state={dashboardLoadState(recommendations)}
+          label={t("dashboard.coachSteps")}
+          onRetry={() => void recommendations.refetch()}
+        >
+          {(recommendations.data ?? []).length === 0 ? (
+            <Empty text={t("dashboard.noSavedRecommendations")} />
+          ) : (
+            <ul className="space-y-2">
+              {recommendations.data?.map((recommendation) => {
+                const cta = readCta(recommendation.cta);
+                const href = dashboardActionHref(cta?.href);
+                return (
+                  <li key={recommendation.id} className="rounded-xl border border-border/60 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <RecIcon kind={recommendation.kind} />
+                        <div className="min-w-0">
+                          <h3 className="font-semibold [overflow-wrap:anywhere]">
+                            {recommendation.title}
+                          </h3>
+                          {recommendation.body && (
+                            <p className="mt-1 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                              {recommendation.body}
+                            </p>
+                          )}
+                        </div>
                       </div>
+                      <SeverityPill severity={recommendation.severity} />
                     </div>
-                    <SeverityPill severity={r.severity} />
-                  </div>
-                  {cta && (
-                    <Link
-                      to={cta.href}
-                      className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                    >
-                      {cta.label ?? "Abrir"} <ArrowUpRight className="size-3" />
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                    {cta && href && (
+                      <Link
+                        to={href}
+                        className="mt-2 inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        {cta.label ?? t("dashboard.open")}
+                        <ArrowUpRight aria-hidden="true" className="size-3" />
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </PanelFeedback>
       </Panel>
-
       <Panel
-        title="Missões prioritárias"
+        title={t("dashboard.priorityMissions")}
         icon={Target}
-        action={<LinkAction to="/app/missions" label="Gerenciar" />}
+        action={<LinkAction to="/app/missions" label={t("common.viewAll")} />}
       >
-        {priorityMissions.length === 0 ? (
-          <Empty text="Nenhuma missão pendente." />
+        {missions.length === 0 ? (
+          <Empty text={t("dashboard.noPendingMissions")} />
         ) : (
           <ul className="space-y-2">
-            {priorityMissions.map((m) => (
+            {missions.map((mission) => (
               <li
-                key={m.id}
-                className="flex items-center justify-between rounded-xl border border-border/50 bg-background/30 p-4 transition-all hover:border-primary/30"
+                key={mission.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 p-4"
               >
-                <span className="truncate text-sm">{m.title}</span>
-                <StatusPill status={m.status} />
+                <span className="min-w-0 text-sm [overflow-wrap:anywhere]">{mission.title}</span>
+                <StatusPill status={mission.status} />
               </li>
             ))}
           </ul>

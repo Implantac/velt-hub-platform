@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { buildSnapshot } from "@/lib/brain/brain";
 import { throwIfError } from "./_supabase";
+import { requireWorkspaceRole } from "./_workspace";
 
 const wsInput = z.object({ workspaceId: z.string().uuid() });
 type Category = "marketing" | "content" | "brand" | "channel" | "growth";
@@ -84,18 +85,27 @@ export const getLatestHealth = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i) => wsInput.parse(i))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    await requireWorkspaceRole(supabase, data.workspaceId, userId);
     const cats: Category[] = ["marketing", "content", "brand", "channel", "growth"];
     const results = await Promise.all(
       cats.map(async (cat) => {
-        const { data: r } = await supabase
+        const { data: r, error } = await supabase
           .from("health_metrics")
           .select("*")
           .eq("workspace_id", data.workspaceId)
           .eq("category", cat)
           .order("computed_at", { ascending: false })
+          .order("id", { ascending: false })
           .limit(1)
           .maybeSingle();
+        throwIfError(error);
+        if (
+          r === undefined ||
+          (r !== null && (!Number.isFinite(r.score) || r.score < 0 || r.score > 100))
+        ) {
+          throw new Error("Dashboard health score was not returned in its supported range.");
+        }
         return r;
       }),
     );

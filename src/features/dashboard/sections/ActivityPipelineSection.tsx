@@ -1,73 +1,60 @@
 import { FileText, Zap } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Empty, Panel } from "../components/atoms";
-import type { Row } from "@/lib/brain/types";
+import type { DashboardOverview } from "../types";
+import { dashboardDate } from "../presentation";
 
-/**
- * The dashboard query selects four columns, not the whole row — so the prop
- * declares the projection. Typing it as the full row would promise
- * `workspace_id` and `processed_at`, which never arrive.
- */
-export type ActivityEvent = Pick<
-  Row<"domain_events">,
-  "id" | "event_type" | "payload" | "created_at"
->;
-
+export type ActivityEvent = DashboardOverview["events"][number];
 type Props = { events: ActivityEvent[]; contentByStatus: Record<string, number> };
 
 export function ActivityPipelineSection({ events, contentByStatus }: Props) {
-  const total = Object.values(contentByStatus).reduce((a: number, b) => a + (b as number), 0);
+  const { t, i18n } = useTranslation();
+  const total = Object.values(contentByStatus).reduce((sum, value) => sum + value, 0);
+  const number = new Intl.NumberFormat(i18n.language);
   return (
     <section className="grid gap-4 lg:grid-cols-3">
-      <Panel title="Atividade recente" icon={Zap} className="lg:col-span-2">
+      <Panel title={t("dashboard.recentActivity")} icon={Zap} className="lg:col-span-2">
         {events.length === 0 ? (
-          <Empty text="Sem eventos ainda." />
+          <Empty text={t("dashboard.panels.noEvents")} />
         ) : (
           <ul className="divide-y divide-border/40">
-            {events.slice(0, 8).map((e) => (
+            {events.slice(0, 8).map((event) => (
               <li
-                key={e.id}
-                className="flex items-center justify-between py-2.5 sm:py-3 text-sm transition-colors hover:bg-white/5 px-2 rounded-lg"
+                key={event.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
               >
-                <div className="flex items-center gap-2">
-                  <div className="size-1.5 rounded-full bg-accent animate-soft-pulse" />
-                  <span className="font-mono text-xs font-medium text-accent">{e.event_type}</span>
-                </div>
-                <span className="text-[11px] font-medium text-muted-foreground">
-                  {new Date(e.created_at).toLocaleString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    day: "2-digit",
-                    month: "short",
-                  })}
+                <span className="min-w-0 font-mono text-xs text-accent [overflow-wrap:anywhere]">
+                  {event.event_type}
                 </span>
+                <time dateTime={event.created_at} className="text-xs text-muted-foreground">
+                  {dashboardDate(event.created_at, i18n.language) ?? t("dashboard.dateUnavailable")}
+                </time>
               </li>
             ))}
           </ul>
         )}
       </Panel>
-
-      <Panel title="Pipeline de conteúdo" icon={FileText}>
-        {Object.keys(contentByStatus).length === 0 ? (
-          <Empty text="Sem conteúdo ainda." />
+      <Panel title={t("dashboard.panels.pipeline")} icon={FileText}>
+        {total === 0 ? (
+          <Empty text={t("dashboard.panels.noContent")} />
         ) : (
           <div className="space-y-3">
-            {Object.entries(contentByStatus).map(([k, v]) => {
-              const pct = total === 0 ? 0 : Math.round(((v as number) / total) * 100);
-              return (
-                <div key={k}>
-                  <div className="mb-1 flex items-center justify-between text-sm">
-                    <span className="capitalize text-muted-foreground">{k}</span>
-                    <span className="font-medium">{v as number}</span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
-                    <div
-                      className="h-full rounded-full bg-gradient-brand transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
+            {Object.entries(contentByStatus).map(([status, value]) => (
+              <div key={status}>
+                <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">
+                    {t(`content.${status}`, { defaultValue: status })}
+                  </span>
+                  <span className="tabular-nums">{number.format(value)}</span>
                 </div>
-              );
-            })}
+                <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${Math.round((value / total) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Panel>

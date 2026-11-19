@@ -1,6 +1,42 @@
 # Plano de melhorias e correções — VELT
 
-## Rodada 13 — acesso para piloto assistido (local, não publicada)
+## Rodada 16 — USE Brain nativo (local, não publicada)
+
+Continuação local da entrega 15, sobre a última publicação conhecida `2c32eff40f6d2c88eaaffd2e8eaf329b161066ab`. As evoluções 15 e 16 ainda não foram enviadas ao GitHub/Vercel; nenhum banco/env/credencial foi alterado nesta rodada.
+
+- [x] Distinguir loading/erro/vazio confirmado/cache desatualizado por painel de memórias e recomendações, com retry e prévias50 separadas dos totais exatos.
+- [x] Separar atualização GET de geração explícita por regras, com confirmação, fontes contadas corretamente e falhas propagadas antes da gravação.
+- [x] Preservar o histórico em falha de geração; confirmar lote salvo e informar evento secundário indisponível sem incentivar duplicação.
+- [x] Confirmar memórias com trim2–4000 e status manual open/não expirado; zero linhas/recibo incompatível não são sucesso. Bloquear duplo envio e pedir releitura antes de decidir reenviar resultado incerto.
+- [x] Restringir ações a owner/admin/editor, negar membership desconhecida e isolar cache, formulário e retorno tardio por usuário/workspace.
+- [x] Melhorar rótulos, radios, PT/EN, fuso São Paulo, rota de composição e feedback de recuperação parcial/completa.
+- [x] Validar 2.067 testes/99 arquivos, typecheck/lint/build, 38 checks navegador/21 Axe e 12 respostas HTML/25 assets locais. Auth/RPC/gravações do navegador são sintéticos fora do produto.
+- [ ] Concluir a revisão técnica de dependências e homologar fluxos reais em ambiente autorizado. Audit local reportou zero no lock inalterado; risco técnico histórico não foi considerado corrigido.
+- [ ] Integrar/publicar quando autorizado, partindo da main remota correta — não do HEAD herdado. Patches incremental16 e acumulado15–16 são alternativas.
+
+O USE Brain nativo gera recomendações por regras, **não recalcula a pontuação/cinco respostas do dashboard** nem chama IA. Core de análises/Coach/Brain Lab e idempotência distribuída permanecem outras frentes. Histórico aditivo pode conter sugestões repetidas. Método, contratos e limites em [QA_BRAIN_RODADA_16.md](./docs/QA_BRAIN_RODADA_16.md).
+
+## Rodada 15 — painel confiável (local, não publicada)
+
+Base publicada: `2c32eff40f6d2c88eaaffd2e8eaf329b161066ab`, integrada na rodada 14. A revisão abaixo é desenvolvimento local; não houve push/deploy nem alteração de banco/configuração.
+
+- [x] Contar marcas/canais/conteúdo com contagens exatas; separar o total de agendamentos futuros pendentes da prévia de até cinco, com o mesmo corte de data.
+- [x] Exibir falha de leitura, ausência confirmada e cache desatualizado como estados diferentes, sem converter erro em zero.
+- [x] Tornar atualização do painel somente leitura; consultar análises salvas com data/expiração e manter geração como ação explícita no USE Brain.
+- [x] Adiar consultas avançadas no primeiro uso até a abertura dos detalhes; conexão social opcional fora das duas etapas essenciais.
+- [x] Isolar cache e feedback por usuário/workspace, ocultar dados com membership não confirmada e adequar próximos passos ao papel.
+- [x] Preservar navegação/metadados/SSR, mover composição para features e traduzir estáticos PT/EN com datas no fuso explícito de São Paulo.
+- [x] Validar localmente typecheck/lint, 1.878 testes/95 arquivos, build Vercel, 39 checks de navegador/21 Axe e 10 respostas HTML/25 assets.
+- [ ] Concluir a revisão técnica de dependências: consultas de auditoria desta rodada retornaram zero, mas o lock não mudou; a página do advisory contém data posterior à referência da conversa. Não se tratou isso como patch nem aceite de risco.
+- [ ] Revisar e autorizar futura integração/publicação. Nenhum HEAD Git herdado deve ser publicado sem reconstruir a integração sobre a base remota correta.
+
+Método, resultados e limites em [QA_PAINEL_RODADA_15.md](./docs/QA_PAINEL_RODADA_15.md). Fixtures de QA ficam fora do produto e não homologam Auth/RLS/SMTP/provedores reais. Piloto assistido condicionado, sem liberação comercial.
+
+### Publicação 14 — concluída (histórico operacional)
+
+A evolução de acesso da rodada 13 foi publicada no GitHub/main como `2c32eff40f6d2c88eaaffd2e8eaf329b161066ab` e promovida na Vercel como `dpl_G4mDE3C5jH5AeHwPPz2psJxNoC1V`. A aplicação passou no CI; a auditoria então registrou 11 findings altos. Isso é histórico, não uma nova publicação ou um novo CI desta rodada.
+
+## Rodada 13 — acesso para piloto assistido (histórico; publicada na rodada 14)
 
 - [x] Confirmar sessão antes de exibir a troca de senha; distinguir link inválido de indisponibilidade temporária, inclusive falha na inicialização do SDK.
 - [x] Descartar respostas antigas em logout/troca de identidade e revalidar a conta antes de atualizar a senha.
@@ -8,10 +44,10 @@
 - [x] Usar destinos de confirmação/reenvio consistentes, validação compartilhada de nome e visibilidade de senha acessível.
 - [x] Manter PT/EN e rotas de composição; validar 1.663 testes/91 arquivos, typecheck/lint/build, 76 checks de navegador/28 Axe e 6 respostas SSR/11 assets locais.
 - [ ] Homologar SMTP, redirecionamentos autorizados e ciclo real de confirmação/recuperação em ambiente isolado. Fixtures do harness não comprovam entrega.
-- [ ] Resolver adequadamente a pendência de dependências: nova auditoria continua reprovada com 11 findings altos. Nenhum fork, exceção ou mudança de lock foi adotado.
-- [ ] Revisar e autorizar sincronização/publicação desta rodada; GitHub/Vercel não foram alterados.
+- [ ] Concluir a revisão técnica de dependências. A auditoria desta rodada histórica registrou 11 findings altos; consulte a observação distinta da rodada 15 acima. Nenhum fork, exceção ou mudança de lock foi adotado.
+- [x] Sincronização/publicação posteriormente autorizada e concluída na rodada 14, com SHA/deploy conferidos.
 
-Método e limites em [QA_ACESSO_RODADA_13.md](./docs/QA_ACESSO_RODADA_13.md). As verificações históricas de audit zero abaixo não substituem a auditoria atual reprovada. Não há liberação comercial.
+Método e limites em [QA_ACESSO_RODADA_13.md](./docs/QA_ACESSO_RODADA_13.md). As verificações de auditoria abaixo são históricas; a consulta mais recente e seus limites estão na rodada 15 acima. Não há liberação comercial.
 
 ## Rodada de portfólio — 12/11/2026
 

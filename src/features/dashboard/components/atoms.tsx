@@ -9,8 +9,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { MotionCard } from "@/components/app/Motion";
 import { fadeUp } from "@/components/app/motion-presets";
+
 export function RecIcon({ kind }: { kind: string }) {
   const map: Record<string, { icon: LucideIcon; color: string }> = {
     warning: { icon: AlertTriangle, color: "text-destructive" },
@@ -18,18 +20,18 @@ export function RecIcon({ kind }: { kind: string }) {
     suggestion: { icon: Lightbulb, color: "text-accent" },
     next_action: { icon: CheckCircle2, color: "text-success" },
   };
-  const m = map[kind] ?? map.insight;
-  const I = m.icon;
+  const match = map[kind] ?? map.insight;
+  const Icon = match.icon;
   return (
     <div
-      className={`grid size-9 sm:size-10 shrink-0 place-items-center rounded-xl sm:rounded-2xl bg-background/40 backdrop-blur-sm ring-1 ring-border/50 transition-all duration-300 group-hover:ring-primary/40 group-hover:bg-primary/10 ${m.color}`}
+      className={`grid size-9 shrink-0 place-items-center rounded-xl bg-background/40 ring-1 ring-border/50 ${match.color}`}
     >
-      <I className="size-4.5" />
+      <Icon aria-hidden="true" className="size-4" />
     </div>
   );
 }
-
 export function SeverityPill({ severity }: { severity: string }) {
+  const { t } = useTranslation();
   const tone =
     severity === "critical" || severity === "high"
       ? "bg-destructive/15 text-destructive"
@@ -37,15 +39,13 @@ export function SeverityPill({ severity }: { severity: string }) {
         ? "bg-primary/15 text-primary"
         : "bg-secondary text-secondary-foreground";
   return (
-    <span
-      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${tone}`}
-    >
-      {severity}
+    <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-medium ${tone}`}>
+      {t(`dashboard.severity.${severity}`, { defaultValue: severity })}
     </span>
   );
 }
-
 export function StatusPill({ status }: { status: string }) {
+  const { t } = useTranslation();
   const tone =
     status === "done"
       ? "bg-success/15 text-success"
@@ -55,12 +55,11 @@ export function StatusPill({ status }: { status: string }) {
           ? "bg-destructive/15 text-destructive"
           : "bg-secondary text-secondary-foreground";
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${tone}`}>
-      {status.replace("_", " ")}
+    <span className={`shrink-0 rounded-full px-2 py-1 text-xs ${tone}`}>
+      {t(`dashboard.missionStates.${status}`, { defaultValue: status.replaceAll("_", " ") })}
     </span>
   );
 }
-
 export function Empty({ text }: { text: string }) {
   return (
     <div className="rounded-xl border border-dashed border-border/70 bg-card/20 px-4 py-6 text-center text-sm leading-relaxed text-muted-foreground">
@@ -68,15 +67,17 @@ export function Empty({ text }: { text: string }) {
     </div>
   );
 }
-
 export function LinkAction({ to, label }: { to: string; label: string }) {
   return (
-    <Link to={to} className="link-underline inline-flex items-center gap-1 text-xs text-primary">
-      {label} <ArrowUpRight className="size-3" />
+    <Link
+      to={to}
+      className="link-underline inline-flex min-h-11 shrink-0 items-center gap-1 text-xs text-primary"
+    >
+      {label}
+      <ArrowUpRight aria-hidden="true" className="size-3" />
     </Link>
   );
 }
-
 export function Panel({
   title,
   icon: Icon,
@@ -91,19 +92,18 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <motion.div variants={fadeUp} className={`section-card p-6 md:p-8 ${className}`}>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <Icon className="size-4 text-accent" />
+    <motion.div variants={fadeUp} className={`section-card min-w-0 p-5 sm:p-6 ${className}`}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-medium">
+          <Icon aria-hidden="true" className="size-4 shrink-0 text-accent" />
           <span className="tracking-tight">{title}</span>
-        </div>
+        </h2>
         {action}
       </div>
       {children}
     </motion.div>
   );
 }
-
 export function KpiCard({
   icon: Icon,
   label,
@@ -118,24 +118,22 @@ export function KpiCard({
   to?: string;
 }) {
   const body = (
-    <MotionCard className="stat-tile group relative block overflow-hidden p-6 md:p-7">
+    <MotionCard className="stat-tile group relative block min-w-0 overflow-hidden p-4 sm:p-6">
       <div className="flex items-center justify-between">
-        <Icon className="size-4 text-accent transition-colors group-hover:text-primary" />
-        {to && (
-          <ArrowUpRight className="size-3 text-muted-foreground transition group-hover:text-primary" />
-        )}
+        <Icon aria-hidden="true" className="size-4 text-accent" />
+        {to && <ArrowUpRight aria-hidden="true" className="size-3 text-muted-foreground" />}
       </div>
-      <div className="mt-2.5 sm:mt-3 text-2xl sm:text-3xl font-bold tabular-nums tracking-tighter text-foreground">
+      <div className="mt-3 text-xl font-bold tabular-nums tracking-tight text-foreground [overflow-wrap:anywhere] sm:text-3xl">
         {value}
       </div>
-      <div className="text-[11px] text-muted-foreground">
+      <div className="mt-1 text-xs text-muted-foreground">
         {label}
         {hint ? ` · ${hint}` : ""}
       </div>
     </MotionCard>
   );
   return to ? (
-    <Link to={to} className="block">
+    <Link to={to} className="block min-w-0">
       {body}
     </Link>
   ) : (

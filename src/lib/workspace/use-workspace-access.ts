@@ -7,7 +7,7 @@ import { workspacePermissions } from "./permissions";
 
 /** Reuse the shell's user-keyed membership cache; do not infer access from a stored ID. */
 export function useWorkspaceAccess() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [workspaceId] = useCurrentWorkspaceId();
   const list = useServerFn(listMyWorkspaces);
   const query = useQuery({
@@ -19,6 +19,8 @@ export function useWorkspaceAccess() {
     ? null
     : query.data?.find((workspace) => workspace.id === workspaceId)?.role;
   return {
+    userId: user?.id ?? null,
+    authLoading,
     ...workspacePermissions(role),
     role,
     isPending: query.isPending,

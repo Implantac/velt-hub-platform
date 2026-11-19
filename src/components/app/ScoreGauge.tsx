@@ -1,3 +1,5 @@
+import { useId } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { EASE } from "./motion-presets";
 /** Animated radial gauge for Digital Score (0-100). */
@@ -10,21 +12,26 @@ export function ScoreGauge({
   size?: number;
   label?: string;
 }) {
+  const { t } = useTranslation();
+  const id = useId();
+  const gradientId = `gauge-gradient-${id}`;
+  const glowId = `gauge-glow-${id}`;
   const v = Math.max(0, Math.min(100, value));
   const stroke = 14;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - v / 100);
-  const tier =
+  const tier = t(
     v >= 80
-      ? "Excelente"
+      ? "scoreGauge.excellent"
       : v >= 60
-        ? "Bom"
+        ? "scoreGauge.good"
         : v >= 40
-          ? "Em evolução"
+          ? "scoreGauge.improving"
           : v >= 20
-            ? "Iniciante"
-            : "Começando";
+            ? "scoreGauge.beginner"
+            : "scoreGauge.starting",
+  );
   // Use design tokens directly (project uses oklch — NOT hsl-wrapped).
   const colorVar =
     v >= 80
@@ -36,20 +43,25 @@ export function ScoreGauge({
           : v >= 20
             ? "var(--warning)"
             : "var(--destructive)";
-
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div
+      role="img"
+      aria-label={t("scoreGauge.accessible", { label, value: Math.round(v), tier })}
+      className="relative"
+      style={{ width: size, height: size }}
+    >
       <svg
+        aria-hidden="true"
         width={size}
         height={size}
         className="-rotate-90 drop-shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
       >
         <defs>
-          <linearGradient id="gauge-grad" x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={colorVar} stopOpacity="1" />
             <stop offset="100%" stopColor={colorVar} stopOpacity="0.45" />
           </linearGradient>
-          <filter id="glow">
+          <filter id={glowId}>
             <feGaussianBlur stdDeviation="3.5" result="coloredBlur" />
             <feMerge>
               <feMergeNode in="coloredBlur" />
@@ -69,11 +81,11 @@ export function ScoreGauge({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="url(#gauge-grad)"
+          stroke={`url(#${gradientId})`}
           strokeWidth={stroke}
           fill="none"
           strokeLinecap="round"
-          filter="url(#glow)"
+          filter={`url(#${glowId})`}
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: offset }}
