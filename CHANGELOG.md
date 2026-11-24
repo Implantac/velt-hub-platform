@@ -1,5 +1,50 @@
 # Changelog
 
+## [Integração GitHub25 — melhorias até a rodada24] — 2026-11-12
+
+- Reunido o projeto completo18–24 sobre a base703f93c para `main`/Lovable; Dashboard/Brain15–16 já estão na base, sem duplicar patches ou publicar só o laboratório.
+- Código funcional24 preservado; atualizada apenas documentação para distinguir os encerramentos locais históricos de uma integração GitHub posterior.
+- CI/deploy/sincronização Lovable são estados externos por commit; esta entrada não afirma publicação Lovable nem homologação comercial.
+- Sem alteração de ambiente/credenciais/dependências/locks/CI/migrations/políticas ou aceite de risco. Sete moderados dev continuam pendentes, produção observada0 não encerra manutenção. [Escopo e operação](./docs/INTEGRACAO_GITHUB_RODADA_25.md).
+
+## [Brain Lab Skills — rodada 24, local não publicada] — 2026-11-12
+
+- Migrado SkillsPanel para SkillMapSurface compartilhado com a rota nativa; mesmos API/hook/guard/cache/draft/recibo/ledger por conta+workspace, sem segundo formulário ou calls aos endpoints legados de Skills na UI conhecida.
+- Mantidos nota0–100/zero válido, revisão/consentimento, base/CAS/recibo, metadados legados e recuperação sem replay; links entre locais revogam consentimento de montagem, sem gravar por navegação.
+- Brain Lab com aba validada na URL, deep-link Skills sem Twin/aba inativa incidental e tablist manual por teclado/Back. Padrão Twin preservado; h2/h3 e IDs distintos no painel, default nativo mantido.
+  -15folhas novas PT/EN; demais conteúdos/seis painéis e handlers de brain-evolution intactos. API legada Skills ainda existente, não corrigida/retirada do servidor.
+- **4.056 testes/136arquivos (206novos),88checks/64Axe,28HTML/25assets** e typecheck/lint/build locais aprovados;39POSTs Skills/7GETs Twin sintéticos, sem homologação Auth/RLS/Postgres/SMTP/IA/provedor reais.
+- Auditoria geral sete moderados dev pendentes, produção observada0, lock/CI iguais; sem fix/fork/waiver/aceite ou conector/push/deploy/banco/ambiente remoto. [Contratos e limites](./docs/QA_BRAIN_LAB_SKILLS_RODADA_24.md).
+
+## [Skill Map — rodada23, local não publicada] — 2026-11-12
+
+- Editor numérico0–100/step1 acessível por teclado, revisão/consentimento e foco explícitos; removida gravação automática ao soltar régua, ausência não vira0/domínio.
+- API nativa dedicada por conta+workspace; GET completo10/count exato e INSERT/UPDATE CAS no registro único da área, com base/recibo integrais. Confidence/evidence preservados, origem self declarada, sem UPSERT/delete/eventos Brain/recálculo oculto.
+- Draft/recibo efêmeros e flags/referência por contexto, remount, guard pré-RPC/servidor e retorno tardio sem limpar escolhas de outra conta/workspace; incerteza pede GET+humano/descarte sem replay.
+- Bug de Back/default-submit identificado por browser real e corrigido com formulário por etapa/default cancelado; gates/build/HTTP/browser repetidos após a correção.
+- **3.850 testes/132 arquivos (390 novos),53 checks/31 Axe,26 HTML/25 assets** locais;24POSTs sintéticos/interceptados. PT/EN99folhas,320/1280px e datas SãoPaulo.
+- API/painel Brain Lab legado e31 migrations preservados; Auth/RLS/Postgres/SMTP/IA/provedores reais não homologados23. Sem conector/push/deploy/banco/ambiente remoto.
+- Auditoria geral sete moderados dev pendentes, produção observada0, lock/CI iguais, sem fix/fork/waiver/aceite. [Contratos e limites](./docs/QA_SKILL_MAP_RODADA_23.md).
+
+## [Trilhas de Aprendizado — rodada22, local não publicada] — 2026-11-12
+
+- Catálogo paginado20/count exato e progresso pessoal por conta, com loading/erro/vazio/stale separados; leitura não grava.
+- Estado desejado/revisão/consentimento e INSERT ou UPDATE CAS por versão, com recibo integral; input antigo de toggle falha fechado, sem UPSERT/retry oculto.
+- Preservação de IDs antigos e percentual original, cálculo manual pelos marcos atuais, sem certificado, aula inventada ou alteração de Score/Skill Map/Brain.
+- Guard pré-RPC e accountId esperado no servidor fecham janela de identidade encontrada no QA; memória temporária e flags por conta sobrevivem remount, sem prometer coordenação distribuída/idempotência.
+- **3.460 testes/126 arquivos (286 novos),48 checks/34 Axe,24 HTML/25 assets** locais.25POSTs sintéticos, sem serviços reais homologados.
+- Auditoria geral sete moderados dev pendentes; produção observada zero, lock/CI iguais, sem fix/fork/waiver/aceite. Sem conector/push/deploy/banco/migration. [QA e limites](./docs/QA_APRENDIZADO_RODADA_22.md).
+
+## [Navigator pessoal — rodada 21, local não publicada] — 2026-11-12
+
+- Primeiro uso navegável, cinco perguntas/revisão final, prefill de todas as respostas e descarte explícito; valores legados/números completos preservados até decisão humana.
+- Cache e rascunho temporário por conta, mantendo dados pessoais no remount de workspace; papéis de workspace não são usados para limitar preferências próprias. Rascunho não é persistência durável.
+- POST completo com versão/UUID de referência; INSERT ou UPDATE CAS e recibo integral. Sem upsert nem alteração oculta de onboarding. Incerto exige GET+humano; rebase e salvamento são decisões distintas, sem replay automático.
+- Roteiro `velt-navigator-v2` com regras/limites visíveis, enum técnico herdado sem alegação de maturidade real, originais rotulados e destinos internos seguros. PT/EN, controles nativos, foco e datas São Paulo.
+- QA:3.174 testes/120 arquivos (311 novos), typecheck/lint/build;38 checks/25 Axe;22 HTML/25 assets locais. Quinze POSTs de navegador sintéticos/interceptados, sem Auth/RLS/banco/provedores/IA reais homologados21.
+- Auditoria geral pendente:sete pacotes moderados dev/um advisory minimatch;produção observada zero e lock inalterado. Sem fix forçado, fork, waiver, mudança de threshold ou aceite de risco.
+- Sem push/deploy, conector, migration ou alteração de banco/ambiente remoto. [Método e limites](./docs/QA_NAVIGATOR_RODADA_21.md). Rodadas18–21 locais; publicação depende de pedido específico.
+
 ## [Observações analíticas atômicas — sexta rodada] — 2026-11-12
 
 ### Persistência, fronteiras e resultados verdadeiros

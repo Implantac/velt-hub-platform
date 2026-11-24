@@ -1,57 +1,98 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
-import { CheckCircle2, Circle, TrendingUp } from "lucide-react";
-import { fadeUp } from "@/components/app/motion-presets";
-import type { ScoredArea } from "../constants";
+import { useTranslation } from "react-i18next";
+import type { SkillArea, SkillAssessment } from "@/lib/skill-map/contracts";
+import { skillBand, skillDate } from "../presentation";
 
-type Props = {
-  area: ScoredArea;
-  pending: boolean;
-  onScore: (score: number) => void;
-};
-
-export function SkillCard({ area, pending, onScore }: Props) {
-  const [draft, setDraft] = useState<number>(area.score ?? 0);
-  const score = area.score ?? draft;
-  const status = score >= 80 ? "mastered" : score >= 30 ? "learning" : "todo";
-  const Icon = status === "mastered" ? CheckCircle2 : status === "learning" ? TrendingUp : Circle;
-  const tone =
-    status === "mastered"
-      ? "border-success/30 bg-success/5"
-      : status === "learning"
-        ? "border-primary/30 bg-primary/5"
-        : "border-border bg-card/60";
-
+export function SkillCard({
+  area,
+  row,
+  disabled,
+  onChoose,
+  headingAs: Heading = "h2",
+  idPrefix = "skill",
+}: {
+  headingAs?: "h2" | "h3";
+  idPrefix?: "skill" | "brain-lab-skill";
+  area: SkillArea;
+  row: SkillAssessment | null;
+  disabled: boolean;
+  onChoose: (button: HTMLButtonElement) => void;
+}) {
+  const { t, i18n } = useTranslation(),
+    band = skillBand(row?.score ?? null);
   return (
-    <motion.div variants={fadeUp} className={`section-card hover-lift p-4 ${tone}`}>
-      <div className="flex items-start gap-3">
-        <Icon
-          className={`mt-0.5 size-4 ${
-            status === "mastered"
-              ? "text-success"
-              : status === "learning"
-                ? "text-primary"
-                : "text-muted-foreground"
-          }`}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">{area.label}</div>
-          <p className="mt-0.5 text-xs text-muted-foreground">{area.why}</p>
+    <section
+      className="min-w-0 space-y-3 rounded-xl border border-border bg-card/60 p-4"
+      aria-labelledby={`${idPrefix}-${area}-title`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Heading id={`${idPrefix}-${area}-title`} className="text-base font-semibold">
+            {t(`skillMapNative.areas.${area}.label`)}
+          </Heading>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {t(`skillMapNative.areas.${area}.hint`)}
+          </p>
         </div>
-        <span className="text-xs font-mono tabular-nums text-muted-foreground">{score}</span>
+        <span
+          className="shrink-0 font-mono text-2xl tabular-nums"
+          aria-label={
+            row
+              ? t("skillMapNative.declaredScore", { score: row.score })
+              : t("skillMapNative.bands.unassessed")
+          }
+        >
+          {row?.score ?? "—"}
+        </span>
       </div>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={5}
-        value={draft || (area.score ?? 0)}
-        onChange={(e) => setDraft(Number(e.target.value))}
-        onMouseUp={(e) => onScore(Number((e.target as HTMLInputElement).value))}
-        onTouchEnd={(e) => onScore(Number((e.target as HTMLInputElement).value))}
-        disabled={pending}
-        className="mt-3 w-full accent-primary"
-      />
-    </motion.div>
+      <p className="text-xs text-muted-foreground">{t(`skillMapNative.bands.${band}`)}</p>
+      {row ? (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {t("skillMapNative.assessedAt")}{" "}
+            <time dateTime={row.assessed_at}>{skillDate(row.assessed_at, i18n.language)}</time>
+          </p>
+          <p className="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
+            {row.notes === null
+              ? t("skillMapNative.noNotes")
+              : row.notes === ""
+                ? t("skillMapNative.originalEmptyNotes")
+                : row.notes}
+          </p>
+          <details className="min-w-0 text-xs text-muted-foreground">
+            <summary className="min-h-11 cursor-pointer py-3 font-semibold">
+              {t("skillMapNative.originalDetails")}
+            </summary>
+            <dl className="space-y-2 [overflow-wrap:anywhere]">
+              <div>
+                <dt className="font-semibold">{t("skillMapNative.source")}</dt>
+                <dd>{JSON.stringify(row.source)}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold">{t("skillMapNative.confidence")}</dt>
+                <dd>{row.confidence}</dd>
+              </div>
+            </dl>
+            <p className="mt-3 leading-relaxed">{t("skillMapNative.technicalHint")}</p>
+            <p className="mt-3 font-semibold">{t("skillMapNative.evidence")}</p>
+            <pre className="mt-2 whitespace-pre-wrap font-mono text-xs [overflow-wrap:anywhere]">
+              {JSON.stringify(row.evidence, null, 2)}
+            </pre>
+          </details>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t("skillMapNative.noAssessment")}</p>
+      )}
+      <button
+        type="button"
+        onClick={(event) => onChoose(event.currentTarget)}
+        disabled={disabled}
+        aria-label={t("skillMapNative.chooseArea", {
+          area: t(`skillMapNative.areas.${area}.label`),
+        })}
+        className="min-h-11 w-full rounded-lg border border-border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+      >
+        {t(row ? "skillMapNative.edit" : "skillMapNative.start")}
+      </button>
+    </section>
   );
 }

@@ -17,6 +17,8 @@ import {
 import { runAIInsights } from "@/lib/brain/ai-insights.server";
 import type { BrainAnswer, BrainQuestion } from "@/lib/brain/types";
 import { throwIfError } from "./_supabase";
+import { coachGenerateInputSchema } from "@/lib/coach/contracts";
+import { generateCoachBatch } from "@/lib/coach/operations.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -218,83 +220,11 @@ export const brainAskAll = createServerFn({ method: "POST" })
     };
   });
 
-/** Generate rule-based recommendations into coach_recommendations (Brain-powered). */
+/** Compatibility entry: same explicit, additive Coach batch and verified receipt as native Coach. */
 export const brainRecommend = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i) => wsInput.parse(i))
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const ctx = await loadContext(supabase, data.workspaceId, userId);
-    const reports = runEngines(ctx);
-    const actions = aggregateActions(reports);
-    const signals = aggregateSignals(reports);
-
-    // Map top actions + top negative signals into coach_recommendations
-    const recs: Array<Database["public"]["Tables"]["coach_recommendations"]["Insert"]> = [];
-    for (const a of actions.slice(0, 6)) {
-      recs.push({
-        workspace_id: data.workspaceId,
-        user_id: userId,
-        kind: "next_action",
-        severity: a.score >= 85 ? "high" : a.score >= 60 ? "medium" : "low",
-        title: a.title,
-        body: a.rationale,
-        cta: a.href ? { label: "Abrir", href: a.href } : {},
-        score: a.score,
-      });
-    }
-    for (const s of signals
-      .filter((x) => x.kind === "negative" && x.severity !== "low")
-      .slice(0, 4)) {
-      recs.push({
-        workspace_id: data.workspaceId,
-        user_id: userId,
-        kind: "warning",
-        severity: s.severity,
-        title: s.message,
-        body: `Detectado pelo motor ${s.engine}.`,
-        cta: {},
-        score: Math.round(s.weight * 100),
-      });
-    }
-    if (recs.length === 0) {
-      recs.push({
-        workspace_id: data.workspaceId,
-        user_id: userId,
-        kind: "insight",
-        severity: "info",
-        title: "Tudo em ordem — mantenha a cadência",
-        body: "Sem bloqueadores críticos. Continue publicando.",
-        cta: {},
-        score: 30,
-      });
-    }
-
-    // Close previous open recs
-    await supabase
-      .from("coach_recommendations")
-      .update({ dismissed_at: new Date().toISOString() })
-      .eq("workspace_id", data.workspaceId)
-      .is("dismissed_at", null)
-      .is("completed_at", null);
-
-    const { data: rows, error } = await supabase
-      .from("coach_recommendations")
-      .insert(recs)
-      .select();
-    throwIfError(error);
-
-    // Remember that we generated insights
-    await supabase.from("brain_memory_events").insert({
-      workspace_id: data.workspaceId,
-      user_id: userId,
-      kind: "signal",
-      subject: "Brain gerou novas recomendações",
-      payload: { count: rows?.length ?? 0 },
-    });
-
-    return { generated: rows?.length ?? 0 };
-  });
+  .inputValidator((input) => coachGenerateInputSchema.parse(input))
+  .handler(({ data, context }) => generateCoachBatch(context.supabase, context.userId, data));
 
 /** Record a memory event (decision/result/pivot/signal/reflection). */
 export const brainRemember = createServerFn({ method: "POST" })

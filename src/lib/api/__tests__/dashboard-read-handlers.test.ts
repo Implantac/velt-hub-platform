@@ -124,10 +124,14 @@ function defaultResult(query: Query): QueryResult {
     case "health_metrics":
       return {
         data: {
-          id: `health-${eq(query, "category")}`,
+          id: `20000000-0000-4000-8000-${String(["marketing", "content", "brand", "channel", "growth"].indexOf(String(eq(query, "category"))) + 1).padStart(12, "0")}`,
+          workspace_id: workspaceId,
           category: eq(query, "category"),
           score: 50,
           computed_at: at,
+          strengths: [],
+          weaknesses: [],
+          details: {},
         },
         error: null,
       };

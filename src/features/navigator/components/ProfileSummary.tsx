@@ -1,79 +1,114 @@
-import { motion } from "framer-motion";
-import { ChevronRight, Sparkles } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
-import { stagger } from "@/components/app/motion-presets";
-import { BUSINESS_PATHS } from "../constants";
-import { NavigatorHeader, Stat } from "./atoms";
-import type { Row } from "@/lib/brain/types";
-import { readTitledActions } from "@/lib/json";
+import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
+import { nativeNavigatorPlan, type NavigatorRecord } from "@/lib/navigator/contracts";
+import { legacyNavigatorActions, navigatorDate, navigatorInternalHref } from "../presentation";
+import { ProfileAnswers } from "./ProfileAnswers";
 
 export function ProfileSummary({
   profile,
   onRetake,
+  canEdit,
 }: {
-  profile: Row<"user_profile_digital">;
+  profile: NavigatorRecord;
   onRetake: () => void;
+  canEdit: boolean;
 }) {
-  const navigate = useNavigate();
-  const p = profile;
+  const { t, i18n } = useTranslation(),
+    method = nativeNavigatorPlan(profile),
+    legacy = legacyNavigatorActions(profile.recommended_actions);
+  const actions = method
+    ? method.actions.map((action) => ({
+        title: t(`navigatorNative.actions.${action.navigator.code}`),
+        href: navigatorInternalHref(action.href),
+      }))
+    : legacy.items;
   return (
-    <div className="space-y-6">
-      <NavigatorHeader />
-      <motion.div
-        variants={stagger}
-        initial="initial"
-        animate="animate"
-        className="grid gap-4 md:grid-cols-3"
-      >
-        <Stat
-          label="Nível"
-          value={
-            p.experience_level === "beginner"
-              ? "Iniciante"
-              : p.experience_level === "intermediate"
-                ? "Intermediário"
-                : "Avançado"
-          }
-        />
-        <Stat
-          label="Caminho"
-          value={BUSINESS_PATHS.find((b) => b.id === p.business_path)?.label ?? "—"}
-        />
-        <Stat label="Maturidade" value={String(p.maturity_level).toUpperCase()} />
-      </motion.div>
-
-      <div className="section-card p-6">
-        <div className="mb-4 flex items-center gap-2 text-sm font-medium">
-          <Sparkles className="size-4 text-accent" /> Suas próximas ações
-        </div>
-        <ul className="space-y-2">
-          {readTitledActions(p.recommended_actions).map((a, i) => (
-            <li
-              key={i}
-              className="hover-lift flex items-center justify-between rounded-xl border border-border bg-background/40 p-4 transition hover:border-primary/40"
-            >
-              <div className="flex items-center gap-3">
-                <div className="grid size-8 place-items-center rounded-lg bg-primary/15 text-sm font-semibold text-primary">
-                  {i + 1}
-                </div>
-                <span className="text-sm font-medium">{a.title}</span>
-              </div>
-              {a.href && (
-                <button
-                  onClick={() => navigate({ to: a.href! })}
-                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90"
-                >
-                  Ir <ChevronRight className="size-3" />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+    <section
+      aria-label={t("navigatorNative.summaryTitle")}
+      className="min-w-0 space-y-5 [overflow-wrap:anywhere]"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">{t("navigatorNative.summaryTitle")}</h2>
+        <button
+          type="button"
+          onClick={onRetake}
+          disabled={!canEdit}
+          className="min-h-11 rounded-lg border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+        >
+          {t("navigatorNative.edit")}
+        </button>
       </div>
-
-      <button onClick={onRetake} className="text-sm text-primary hover:underline">
-        Refazer diagnóstico →
-      </button>
-    </div>
+      <ProfileAnswers answers={profile} />
+      <p className="text-xs text-muted-foreground">
+        {t("navigatorNative.savedAt")}{" "}
+        <time dateTime={profile.updated_at}>
+          {navigatorDate(profile.updated_at, i18n.language)}
+        </time>{" "}
+        · America/Sao_Paulo
+      </p>
+      {!method && (
+        <p className="rounded-xl border border-border p-4 text-sm">
+          {t("navigatorNative.legacyHint")}
+        </p>
+      )}
+      <section aria-label={t("navigatorNative.actionsTitle")} className="space-y-3">
+        <h3 className="font-semibold">{t("navigatorNative.actionsTitle")}</h3>
+        <p className="text-sm text-muted-foreground">{t("navigatorNative.actionsHint")}</p>
+        {actions.length ? (
+          <ol className="space-y-2">
+            {actions.map((action, index) => (
+              <li
+                key={index}
+                className="flex min-w-0 flex-col items-start gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <span className="min-w-0 text-sm font-medium">
+                  {index + 1}. {action.title}
+                </span>
+                {action.href && (
+                  <Link
+                    to={action.href}
+                    aria-label={t("navigatorNative.openAction", { title: action.title })}
+                    className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-border px-3 py-2 text-sm font-semibold"
+                  >
+                    {t("navigatorNative.openModule")} →
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("navigatorNative.noReadableActions")}</p>
+        )}
+        {!method && legacy.total > legacy.items.length && (
+          <p className="text-xs text-muted-foreground">
+            {t("navigatorNative.legacyPreview", {
+              count: legacy.items.length,
+              total: legacy.total,
+            })}
+          </p>
+        )}
+      </section>
+      <details className="rounded-xl border border-border p-4 text-sm">
+        <summary className="min-h-11 cursor-pointer py-3 font-semibold">
+          {t("navigatorNative.methodSummary")}
+        </summary>
+        <div className="mt-3 space-y-3 text-muted-foreground">
+          <p>{t(method ? "navigatorNative.methodHint" : "navigatorNative.legacyMethod")}</p>
+          {method && (
+            <>
+              <p className="font-semibold text-foreground">{method.model}</p>
+              <p>
+                {t("navigatorNative.revisionReference")} <code>{method.revisionId}</code>
+              </p>
+            </>
+          )}
+          <p>
+            {t("navigatorNative.compatibilityLabel")}{" "}
+            <strong className="text-foreground">{profile.maturity_level}</strong>
+          </p>
+          <p>{t("navigatorNative.compatibilityHint")}</p>
+        </div>
+      </details>
+    </section>
   );
 }

@@ -2,7 +2,117 @@
 
 Atualizado em 12/11/2026. Este documento descreve o código, não certifica integrações externas nem substitui uma homologação de produção.
 
-## Estado mais recente — rodada 16 local, evoluções 15–16 não publicadas
+## Integração GitHub25 — conteúdo validado até a rodada24
+
+Este commit integra o projeto completo acumulado18–24 à base703f93c para a branch `main` usada pelo Lovable. Os encerramentos locais seguintes são históricos, não evidência de uma publicação nova nem homologação comercial.
+
+-628src da24 preservados, com4.056 testes/136arquivos e88checks/64Axe sintéticos no encerramento24. CI por commit e sincronização/publicação Lovable precisam ser conferidos separadamente; não inferir sucesso de deploy a partir do código/documentação.
+
+- Auditoria geral sete moderados dev pendentes, produção observada0; sem mudança de locks/CI/fork/waiver/aceite. API Skills antiga e outros seis painéis continuam limitações distintas.
+- Sem deploy manual, banco/migration/policy/ambiente remotos, IA/provedor real ou reativação de Lovable Cloud. Push pode acionar automações existentes do repositório.
+- Portfólio/piloto condicionado; Auth/RLS/Postgres/SMTP/IA/provedores reais, instalação limpa/backup/LGPD e liberação comercial exigem homologação/autorização específicas.
+
+[Escopo da integração e uso no Lovable](./INTEGRACAO_GITHUB_RODADA_25.md).
+
+## Rodada 24 — encerramento histórico local
+
+Skills do Brain Lab integrado ao mapa nativo em `velt-development-24`, preservando18–23. **Nada enviado ao GitHub/Vercel**; última publicação registrada17/base703f93c, sem consulta remota24. Seções seguintes descrevem estados históricos.
+
+- Uma única superfície/estado por conta+workspace nos dois locais, sem formulário/POST legado de Skills na UI conhecida. API nativa23/hook/guard/ledger/contratos byte-idênticos.
+- Nota inteira0–100 por teclado, revisão/consentimento, base/recibo/CAS e metadados antigos preservados como não verificados; ausência não é0/domínio/certificação. Viewer só gerencia a avaliação própria.
+- Links e tabs/back conservam draft/recibo/trava no runtime, revogam consentimento de montagem e não reenviam; incerteza exige GET deliberado+humano/descarte. Resposta antiga não limpa intenção/consentimento de outro contexto.
+- URL validada/deep-link Skills sem Twin incidental, tablist de ativação manual e composição h1/h2/h3/IDs;15folhas novas PT/EN. Outros seis conteúdos continuam legados/parcialmente traduzidos.
+- **QA24:4.056 testes/136arquivos (206novos),88checks/64Axe,28HTML/25assets**, typecheck/lint/build aprovados.39POSTs Skills/7GETs Twin sintéticos, nenhum serviço real homologado.628src/611outros baseline/31migrations/9protegidos conferidos.
+- API legada brain-evolution e demais seis painéis continuam intactos; exports antigos Skills não foram corrigidos/retirados do servidor. A correção é do consumidor conhecido, não de todo o Brain Lab.
+- Auditoria geral **sete moderados dev**, produção observada0, lock/CI iguais e sem fix/fork/waiver/aceite. Manutenção técnica pendente.
+- Sem conector/push/deploy/CI remoto/migration/banco/ambiente remoto. Preview parado/swap0/saída compilada hasheada-removida. UUID/trava não são idempotência/coordenação distribuídas; membership preflight não atômica e CAS não homologa Postgres real.
+
+[Método e limites](./QA_BRAIN_LAB_SKILLS_RODADA_24.md). **Piloto assistido condicionado, sem liberação comercial.**
+
+## Rodada23 — estado histórico local, sem nova publicação
+
+Skill Map nativo evoluído em `velt-development-23`, preservando18–22. **Nada enviado ao GitHub/Vercel**; última publicação registrada17/base703f93c, sem consulta remota23. Seções anteriores descrevem estados históricos.
+
+- Autoavaliação pessoal por conta,workspace e área, não avaliação da equipe/certificação. Dez áreas, nota0–100 inteira por teclado; ausência é “sem avaliação”, não zero/domínio.
+- Edição/revisão/consentimento explícitos, segunda avaliação por UPDATE versionado no mesmo registro e recibo completo. Confidence/evidence originais preservados como técnicos não calibrados/verificados; nada de UPSERT ou eventos/recálculo ocultos.
+- Cache/draft/recibo/trava por conta+workspace, remount e guard de identidade pré-RPC/no servidor; respostas antigas não limpam nova intenção ou consentimento. Incerto pede leitura+humano e descarte sem replay.
+- API dedicada nativa; handlers/painel Skills do Brain Lab legado não foram alterados nem considerados corrigidos. Membership é preflight, sem nova política/migration; CAS desta API não homologa toda concorrência/Postgres.
+- **QA23:3.850 testes/132 arquivos (390 novos),53 checks/31 Axe,26 HTML/25 assets**, typecheck/lint/build finais aprovados.24POSTs de navegador sintéticos/interceptados, sem Auth/RLS/banco/SMTP/IA/provedor reais homologados.
+- Auditoria geral **sete moderados dev**, produção observada0, lock/CI intactos e sem fix forçado/fork/waiver/aceite. Manutenção técnica pendente.
+- Sem conector/push/deploy/CI remoto/migration/banco/ambiente remoto alterado. Preview parado,swap0 e artefato compilado hasheado/removido. Estado substituível, UUID não é ledger/idempotência distribuída.
+
+[Método e limites](./QA_SKILL_MAP_RODADA_23.md). **Piloto assistido condicionado, sem liberação comercial.**
+
+## Rodada22 — estado histórico local, sem nova publicação
+
+Trilhas de Aprendizado evoluídas em `velt-development-22`, preservando18–21. **Nada enviado ao GitHub/Vercel**; última publicação registrada17/base703f93c, não reconsultada22. As seções21 e anteriores descrevem estados históricos.
+
+- Catálogo autenticado20 por página/count exato e progresso pessoal por conta. Falha de leitura não vira vazio/zero; viewer pode registrar sua própria marcação.
+- Revisão com estado desejado/consentimento, INSERT ou UPDATE versionado e recibo integral. IDs antigos preservados, percentual manual atual separado do original legado, sem alternância cega/UPSERT.
+- Intenção temporária sobrevive remount; resultado incerto pede GET+humano sem replay. Respostas antigas isoladas e conta esperada validada antes do RPC e no servidor, inclusive criação sem linha anterior.
+- PT/EN, foco/teclado/mobile e datas São Paulo. Catálogo no idioma original; metas não são promessa e marcar não certifica aprendizado/competência, não gera aulas nem altera outros módulos.
+- **QA22:3.460 testes/126 arquivos (286 novos),48 checks/34 Axe,24 HTML/25 assets**, typecheck/lint/build aprovados.25POSTs sintéticos/interceptados, sem homologação Auth/RLS/banco/SMTP/IA/provedor reais.
+- Auditoria geral permanece **sete moderados dev**; produção observada zero e lock igual. Sem fix forçado, fork/waiver/threshold/CI alterado ou aceite de risco.
+- Nenhum conector, push/deploy/migration/banco/ambiente remoto alterado. Catálogo sem CAS transacional, timestamp de banco não homologado e guard sem coordenação entre abas/reload/dispositivos; referência não é idempotência distribuída.
+
+[Método, contratos e pendências](./QA_APRENDIZADO_RODADA_22.md). **Piloto assistido condicionado; sem liberação comercial.**
+
+## Rodada 21 — estado histórico local, sem nova publicação
+
+O Navigator pessoal foi evoluído em `velt-development-21`, preservando as rodadas locais18–20. **Não foi enviado ao GitHub/Vercel.** Última publicação registrada17/base703f93c; estado remoto não foi reconferido21. As seções20 e anteriores descrevem seus encerramentos históricos.
+
+- **Questionário utilizável:** primeiro uso com ação de começar, cinco etapas e revisão final, prefill completo e descarte explícito. Horas0–168 e orçamento0–R$1.000.000; legados não são limitados aos sliders antigos nem resetados silenciosamente.
+- **Domínio pessoal:** perfil e rascunho isolados por conta, não workspace. Viewer pode editar preferências próprias; rascunho temporário sobrevive à troca de workspace nesta execução, com expiração após inatividade, sem armazenamento persistente.
+- **Gravação explícita:** sem upsert/efeito oculto no onboarding; criação por INSERT, atualização condicionada à versão lida e recibo integral. Incerteza pede GET e conferência humana, sem replay; base diferente pede decisão explícita antes de substituir. Recibo salvo e falha de releitura são estados separados.
+- **Resultado honesto:** sugestões gerais por regras, com versão/referência, não diagnóstico empresarial, IA ou previsão. Enum técnico legado e fórmula permanecem transparentes, sem provar maturidade. Originais são preservados/rotulados e links inseguros não viram ações.
+- **QA21:** **3.174 testes/120 arquivos,311 novos**, typecheck/lint/build; **38 checks/25 Axe** e **22 HTML/25 assets** locais. PT/EN,320/1280px, teclado e datas São Paulo. Quinze POSTs Navigator interceptados/sintéticos; Auth/RLS/banco/SMTP/IA/provedores reais não foram homologados.
+- **Pendência de segurança:** auditoria geral reportou **sete pacotes moderados na cadeia dev de minimatch (um advisory)**, não está limpa. Produção reportou zero na consulta; lock/CI iguais. Sem fix forçado/fork/waiver/alteração de threshold ou aceite de risco. Manutenção permanece pendente, não ocultada pelos passes da aplicação.
+- **Operação e limites:** nenhum conector/push/deploy/migration/ambiente/banco real alterado. Shell/Brain/growth/Coach/Missões/Saúde/Score compartilhados preservados20. CAS é desta API, UUID não é idempotência distribuída e perfil não ganhou histórico imutável. Clientes externos antigos do POST precisam de migração coordenada.
+
+Veja [QA_NAVIGATOR_RODADA_21.md](./QA_NAVIGATOR_RODADA_21.md). **Piloto assistido condicionado, sem liberação comercial irrestrita.** Homologação externa e publicação18–21 continuam etapas separadas mediante pedido específico.
+
+## Rodada 20 — estado histórico local, sem nova publicação
+
+A evolução Coach está em `velt-development-20`, preservando as melhorias locais18–19. **Não foi enviada ao GitHub/Vercel.** Última publicação registrada17/base703f93c, sem reconferência remota nesta rodada. As seções19 e anteriores são históricas.
+
+- **Coach confiável:** recomendações/jornada paginadas20 com count exato, estados independentes, filtros de histórico e conflito; erro não é lista vazia. GET não gera sugestões, IA, Score ou memórias.
+- **Geração explícita e aditiva:** novo lote confirmado mantém o histórico anterior, inclusive aberto. Duas entradas antes destrutivas agora compartilham a mesma operação. Regras v2 usam quatro fontes internas estritas/cap500, com amostra e critérios; não são personalização pela jornada, previsão comercial ou prova externa.
+- **Permissões e decisões:** viewer lê; API limita gerar/concluir/dispensar a owner/admin/editor. Mudança manual exige a versão aberta lida e linha confirmada; não executa recomendação, conecta conta ou publica conteúdo.
+- **Recuperação:** trava síncrona por usuário/workspace no mesmo runtime, sem retry de POST. Incerto exige GET e conferência humana; lote salvo com evento/releitura não confirmados mostra avisos separados. Não há idempotência distribuída e lotes repetidos podem repetir sugestões.
+- **Experiência e legado:** PT/EN, foco/controles rotulados, 320/1280px e datas São Paulo. Metodologia/contagens por card; textos legados preservados com aviso e links salvos restritos a destinos internos seguros.
+- **QA20:** **2.863 testes/114 arquivos, 310 novos**; typecheck/lint/build Node22; **37 checks/24 Axe**, **20 HTML/25 assets** locais. Os16 POSTs Coach foram sintéticos/interceptados; nenhum Auth/banco/provedor/SMTP/IA real foi homologado.
+- **Operação e limites:** sem conector, push/deploy, migration, mudança de política/credencial/ambiente remoto ou dependência/lock/CI. Seis outros handlers core do Brain preservados; demais fluxos continuam pendentes. Audit público zero não prova correção técnica/risco encerrado. Piloto assistido condicionado, sem liberação comercial.
+
+Mudanças de contrato (inclui batchId no gerador legado), método e limites em [QA_COACH_RODADA_20.md](./QA_COACH_RODADA_20.md). Publicar18–20 depende de pedido específico, não desta entrega local.
+
+## Rodada 19 — estado histórico local, sem nova publicação
+
+A entrega18 de Missões foi preservada. A nova evolução de Saúde/Score está em `velt-development-19`, **não no GitHub/Vercel**. A última publicação registrada é a17/base703f93c; não foi reconferida remotamente agora. As seções18 e anteriores abaixo são históricas.
+
+- **Consulta versus gravação:** Reler dados salvos faz GET; Recalcular e salvar cria um registro explicitamente. Loading/erro/vazio/stale são distintos. Viewer só lê; API exige papel reconhecido e owner/admin/editor para calcular.
+- **Base transparente:** metodologia `velt-records-v2`, quatro fontes internas estritas, recorte500/fonte e total contado separados. A tela declara amostras, datas e ausência de base. Criação de itens não é publicação; fila exclui simulações e resultados incertos. Não mede alcance, receita ou crescimento externo.
+- **Sem falso sucesso:** Score principal e cinco categorias de Saúde conferidos. Falhas de espelhamento no painel/Brain, invalidação de respostas ou releitura aparecem como avisos separados, sem sugerir duplicar o registro confirmado.
+- **Recuperação e experiência:** trava síncrona local, sem retry automático de POST; resultado incerto exige leitura e conferência humana. Cache/feedback por usuário/workspace/módulo, retorno tardio isolado, histórico parcial/legado rotulado, PT/EN e datas São Paulo.
+- **QA19:** **2.553 testes/108 arquivos, 275 novos**, typecheck/lint/build Node22; **49 checks/35 Axe** e **18 HTML/25 assets** locais. Os16 POSTs no navegador foram interceptados com transporte sintético; não houve conta/banco/provedor/SMTP/IA reais.
+- **Limites:** núcleo legado compartilhado do Brain e banco/políticas não mudaram. Zero no feed de auditoria com lock igual não encerra a revisão técnica anterior. Não houve conector remoto, push/deploy, migration ou mudança de ambiente/credencial/configuração.
+
+Método em [QA_SAUDE_SCORE_RODADA_19.md](./QA_SAUDE_SCORE_RODADA_19.md). Homologação real, segurança operacional e condições comerciais continuam pendentes. **Piloto assistido condicionado, não liberação comercial.**
+
+## Rodada 18 — estado histórico local, base publicada na rodada 17
+
+A `main` publicada é `703f93ce5fe0afc93666a0a6cd8b5ed2c42ffa92`, com dashboard e Brain nativo das rodadas15–16. Publicação17 confirmada por SHA/619 blobs, CI de aplicação e auditoria aprovado e Vercel automático `READY / PROMOTED` (`dpl_CsUvRNt5zDZxuKAPEWgEVS3pxzBB`). Isso não publica o desenvolvimento local18 descrito a seguir.
+
+- **Missões confiáveis:** leituras paginadas em20, contagem exata do filtro separada das colunas da página, quatro estados e histórico dispensado acessível. Loading/erro/stale/vazio são distintos; falhas têm retry GET e não autorizam gravações com dados desatualizados.
+- **Gravação confirmada:** título normalizado2–160, descrição opcional2000 e prioridade0–10. Linha/ator/workspace precisam ser conferidos para limpar o formulário. Falha no evento secundário é aviso de missão já salva, não convite a duplicar.
+- **Permissões e concorrência:** API exige membership reconhecida e papel de edição; update condicionado a estado e `updated_at` lidos, com retorno obrigatório. Viewer só consulta. A proteção otimista é desta API; políticas e grants do banco não foram alterados.
+- **Recuperação e contexto:** nenhum retry automático de POST; duplo clique local bloqueado. Resultado incerto conserva o rascunho e pede releitura e confirmação explícita antes de outra ação. Retornos tardios não vazam dados/feedback nem limpam formulários de outro usuário/workspace. Isso não é exactly-once distribuído.
+- **Experiência:** rota de composição, campos rotulados, radios nativos, quadros responsivos, PT/EN e datas São Paulo. Estados são manuais, sem execução do objetivo, IA ou recálculo de análises/recomendações salvas.
+- **QA local18:** 2.278 testes/103 arquivos, typecheck/lint/build Vercel Node22.13; 36 checks navegador/24 Axe sem violações detectadas nos estados selecionados; 14 HTML/25 assets locais. Os 16 POSTs de missões foram sintéticos, interceptados em harness externo, sem conta/banco/provedor reais.
+- **Operação:** fontes novas em `velt-development-18`, base703f93c. Não houve push/deploy, Supabase remoto, migration, alteração de ambiente/credencial/lock ou configuração nesta rodada. Auditoria atual reportou zero; a revisão técnica anterior segue pendente, sem fork/waiver ou aceite de risco.
+
+Consulte [QA_MISSOES_RODADA_18.md](./QA_MISSOES_RODADA_18.md). Homologação Auth/RLS/SMTP/provedores, proteção operacional/comercial e demais itens do checklist continuam pendentes. **Piloto assistido condicionado, não liberação comercial.** As seções abaixo são históricas e preservam o estado do encerramento correspondente; a publicação17 supersede as indicações antigas de evoluções15–16 ainda locais.
+
+## Rodada 16 — estado histórico antes da publicação17
 
 A publicação de referência continua sendo a rodada 14/main `2c32eff40f6d2c88eaaffd2e8eaf329b161066ab`. As melhorias do painel e do USE Brain desta sequência permanecem locais; não houve novo push/deploy/CI remoto, migration, banco, credencial ou configuração de produção nesta rodada.
 

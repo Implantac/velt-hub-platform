@@ -1,2 +1,2 @@
-export const MISSION_COLS = ["pending", "in_progress", "done"] as const;
-export type MissionStatus = (typeof MISSION_COLS)[number];
+export { MISSION_STATUSES as MISSION_COLS } from "@/lib/missions/contracts";
+export type { MissionStatus } from "@/lib/missions/contracts";

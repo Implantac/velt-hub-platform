@@ -10,6 +10,42 @@ O diferencial não é ser mais um agendador de posts. É ser a camada de **julga
 
 ## Estado atual, sem marketing
 
+### Integração GitHub25 — melhorias completas até a rodada24
+
+Este conjunto reúne o desenvolvimento18–24 sobre a base publicada registrada703f93c, para integração na branch `main` de `Implantac/velt-hub-platform` e consumo pelo projeto Lovable conectado a ela. Dashboard/Brain15–16 já pertencem à base; não é apenas um laboratório ou patch parcial.
+
+As seções18–24 abaixo registram **validações locais históricas antes desta integração**; seus avisos de “não publicado” descrevem aqueles encerramentos. Esta documentação não confirma sincronização/publicação no Lovable, resultado de CI/deploy ou disponibilidade de serviços reais: confira o commit e os checks correspondentes no GitHub e o estado no Lovable.
+
+Inclui Missões, Saúde/Score, Coach, Navigator, Aprendizado, Skill Map e integração Skills do Brain Lab. Código da24 preservado: **4.056 testes/136arquivos**,88checks/64Axe locais sintéticos e28HTML/25assets no encerramento24, não homologação real. Auditoria geral ainda tem **sete moderados dev**; produção observada0 não encerra a manutenção. Dependências/locks/CI/ambiente/migrations não foram alterados nesta integração. [Escopo e operação](./docs/INTEGRACAO_GITHUB_RODADA_25.md).
+
+### Evolução local 24 — Habilidades do Brain Lab integradas ao mapa (histórico)
+
+Entrega acumulada18–24 **local, não publicada**. Skills do Brain Lab agora usa a mesma superfície, API nativa e estado pessoal por conta+workspace do Mapa de Habilidades, sem segundo formulário/escritor legado na UI conhecida. Links/abas/histórico preservam draft/recibo/trava neste runtime e revogam consentimento ao remontar; incerto continua exigindo GET+humano/descarte sem replay. Nota0–100 por teclado, base/recibo/CAS, ausência distinta de0/domínio e metadados não verificados preservados.
+
+Deep-link `/app/brain-lab?tab=skills` não monta Twin; tablist manual com setas/Home/End para foco e Enter/Espaço para ativar. H1/h2/h3/IDs por contexto e15folhas novas PT/EN; demais conteúdos dos seis painéis não foram traduzidos/corrigidos. API legada Skills ainda existe no servidor, não foi corrigida/retirada; só o consumidor conhecido migrou.
+
+**QA24:4.056 testes/136arquivos (206novos),88checks/64Axe,28HTML/25assets**, typecheck/lint/build aprovados,628src conferidos.39POSTs Skills e7GETs Twin de browser sintéticos, não homologação real ou certificação WCAG. Auditoria geral continua **sete moderados dev**, produção observada0, lock/CI iguais e sem waiver/aceite. Nenhum conector/push/deploy/banco remoto. [Método e limites](./docs/QA_BRAIN_LAB_SKILLS_RODADA_24.md).
+
+### Evolução local23 — Skill Map com reavaliação explícita (histórico)
+
+Entrega acumulada18–23 **local, não publicada**. Skill Map agora separa edição, revisão e consentimento; aceita nota inteira0–100 por teclado, trata ausência como “sem avaliação” e atualiza a mesma área por versão/recibo em vez de novo INSERT cego. Registro é pessoal por conta+workspace, inclusive viewer próprio. Metadados legados são preservados como não verificados; não é certificação/IA/resultado de negócio.
+
+Draft/recibo temporários e trava por contexto, guard de identidade e resposta tardia sem alterar nova escolha; incerteza exige leitura+humano sem replay. API nativa dedicada, sem modificar os handlers/painel legado Brain Lab, migrations ou dependências. **QA23:3.850 testes/132 arquivos (390 novos),53 checks/31 Axe e26 HTML/25 assets**, typecheck/lint/build finais PASS; Auth/RPC de navegador sintéticos, não homologação real ou certificação WCAG. Auditoria geral continua **sete moderados dev**, produção observada0, sem waiver/aceite e lock/CI intactos. [Método e limites](./docs/QA_SKILL_MAP_RODADA_23.md).
+
+### Evolução local22 — Trilhas de Aprendizado (histórico)
+
+Entrega acumulada18–22 **local, não publicada**. Catálogo paginado e progresso pessoal por conta, revisão/consentimento, marcação explícita/versionada e recibo integral. Preserva IDs legados e mostra percentual manual sem certificar aprendizado ou resultados. Trava/intenção temporárias no remount; conta esperada verificada antes do RPC e no servidor; incerteza exige leitura e humano, sem replay. Nenhum curso/IA, migration ou dependência adicionados.
+
+QA22: **3.460 testes/126 arquivos (286 novos),48 verificações/34 Axe e24 HTML/25 assets**, typecheck/lint/build locais aprovados. Auth/RPC de navegador sintéticos; não homologam serviços reais ou WCAG. Auditoria geral permanece **sete moderados dev**, produção observada zero, lock/CI intactos e sem aceite de risco. [Contratos, evidências e limites](./docs/QA_APRENDIZADO_RODADA_22.md).
+
+### Evolução local21 — Navigator pessoal (histórico)
+
+A entrega acumulada18–21 está validada **localmente, sem nova publicação**. Última publicação registrada17/base703f93c, não reconferida nesta rodada. Navigator agora tem primeiro uso navegável, revisão com respostas preenchidas, cache/draft por conta, gravação condicionada à versão e recibo completo, sem completar onboarding ocultamente. Roteiro geral por regras, não diagnóstico de crescimento ou IA. PT/EN, teclado,320/1280px e datas São Paulo.
+
+QA21: **3.174 testes/120 arquivos (311 novos)**, typecheck/lint/build aprovados; **38 verificações/25 Axe** e **22 HTML/25 assets** locais. Auth/RPC do navegador são sintéticos, não homologação real ou certificação WCAG. Auditoria geral **não limpa: sete pacotes moderados dev numa cadeia minimatch**; produção observada zero, lock intacto. Sem fork/waiver/mudança de CI/aceite de risco. [Método, contratos, pendências e limites](./docs/QA_NAVIGATOR_RODADA_21.md).
+
+A tabela e evidências antigas abaixo são contexto histórico por domínio; não significam nova homologação nesta rodada nem liberação comercial.
+
 | Área                                | Situação neste estágio                                                                                                |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Publicação web e Supabase exclusivo | Portfólio funcional, em validação; não é liberação comercial                                                          |
@@ -47,9 +83,7 @@ npm ci
 npm run dev               # http://localhost:8080
 ```
 
-O `.env` permanece versionado por compatibilidade com a configuração Vite deste
-projeto e deve conter **somente configuração pública** do Supabase. A chave
-publishable/anon é pública por desenho e sujeita às políticas RLS.
+A base publicada registrada continha `.env` de configuração pública por compatibilidade com Vite. **A entrega local24 omite `.env` e credenciais**; configure seu próprio `.env.local` autorizado a partir do exemplo. A chave publishable/anon é pública por desenho e sujeita às políticas RLS; isso não autoriza expor chaves de servidor nem dispensa revisão do ambiente.
 
 Nunca coloque segredos nesse arquivo: use apenas variáveis protegidas no ambiente
 do servidor/deploy para service role, OAuth, IA, worker local e cron. `npm run

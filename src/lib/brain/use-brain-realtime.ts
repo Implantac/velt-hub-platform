@@ -39,6 +39,8 @@ export function useBrainRealtime(workspaceId: string | null | undefined) {
         { event: "INSERT", schema: "public", table: "brain_memory_events", filter },
         () => {
           qc.invalidateQueries({ queryKey: ["coach-timeline", workspaceId] });
+          // User-scoped Coach pages are marked stale; explicit GET rereads do not trigger writes.
+          qc.invalidateQueries({ queryKey: ["coach", workspaceId], refetchType: "none" });
           qc.invalidateQueries({ queryKey: ["dashboard-journey", workspaceId] });
         },
       )
@@ -47,6 +49,7 @@ export function useBrainRealtime(workspaceId: string | null | undefined) {
         { event: "*", schema: "public", table: "coach_recommendations", filter },
         () => {
           qc.invalidateQueries({ queryKey: ["recs", workspaceId] });
+          qc.invalidateQueries({ queryKey: ["coach", workspaceId], refetchType: "none" });
           qc.invalidateQueries({ queryKey: ["dashboard-recommendations", workspaceId] });
         },
       )

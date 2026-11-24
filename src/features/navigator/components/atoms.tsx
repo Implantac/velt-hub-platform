@@ -1,77 +1,97 @@
-import { motion } from "framer-motion";
+import { useId, type ReactNode } from "react";
 import { Compass } from "lucide-react";
-import { fadeUp } from "@/components/app/motion-presets";
+import { useTranslation } from "react-i18next";
 import { PageHeader } from "@/components/app/PageHeader";
 
-export function NavigatorHeader() {
+export function NavigatorHeader({ action }: { action?: ReactNode }) {
+  const { t } = useTranslation();
   return (
     <PageHeader
       icon={Compass}
-      eyebrow="Digital Navigator"
-      title="Seu caminho de crescimento"
-      subtitle="Diagnóstico inteligente para gerar seu plano de ação personalizado."
+      eyebrow={t("navigatorNative.eyebrow")}
+      title={t("navigatorNative.title")}
+      subtitle={t("navigatorNative.subtitle")}
+      action={action}
     />
   );
 }
-
-export function Title({ children }: { children: React.ReactNode }) {
-  return <h2 className="mb-6 text-xl font-medium">{children}</h2>;
+export function Title({ children }: { children: ReactNode }) {
+  return <h2 className="text-lg font-semibold">{children}</h2>;
 }
-
 export function ChoiceCard({
+  name,
+  value,
   active,
-  onClick,
+  onChange,
   label,
   desc,
+  disabled,
 }: {
+  name: string;
+  value: string;
   active: boolean;
-  onClick: () => void;
+  onChange: () => void;
   label: string;
-  desc: string;
+  desc?: string;
+  disabled: boolean;
 }) {
+  const id = useId();
   return (
-    <button
-      onClick={onClick}
-      className={`text-left rounded-xl border p-4 transition ${
-        active
-          ? "border-primary bg-primary/10 shadow-glow"
-          : "border-border bg-background/40 hover:border-primary/40"
-      }`}
+    <label
+      htmlFor={id}
+      className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border p-4 ${active ? "border-primary bg-primary/10" : "border-border bg-card"}`}
     >
-      <div className="font-medium">{label}</div>
-      <div className="mt-0.5 text-xs text-muted-foreground">{desc}</div>
-    </button>
+      <input
+        id={id}
+        name={name}
+        type="radio"
+        value={value}
+        checked={active}
+        onChange={onChange}
+        disabled={disabled}
+        className="mt-1 size-5 shrink-0 accent-primary"
+      />
+      <span className="min-w-0 [overflow-wrap:anywhere]">
+        <span className="block text-sm font-semibold">{label}</span>
+        {desc && <span className="mt-1 block text-xs text-muted-foreground">{desc}</span>}
+      </span>
+    </label>
   );
 }
-
 export function Chip({
   active,
-  onClick,
+  onChange,
   children,
+  disabled,
 }: {
   active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+  onChange: () => void;
+  children: ReactNode;
+  disabled: boolean;
 }) {
+  const id = useId();
   return (
-    <button
-      onClick={onClick}
-      className={`rounded-full border px-4 py-1.5 text-sm transition ${
-        active
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-background/40 text-foreground hover:border-primary/40"
-      }`}
+    <label
+      htmlFor={id}
+      className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm [overflow-wrap:anywhere] ${active ? "border-primary bg-primary/10" : "border-border"}`}
     >
-      {children}
-    </button>
+      <input
+        id={id}
+        type="checkbox"
+        checked={active}
+        onChange={onChange}
+        disabled={disabled}
+        className="size-5 shrink-0 accent-primary"
+      />
+      <span className="min-w-0">{children}</span>
+    </label>
   );
 }
-
-export function Stat({ label, value }: { label: string; value: string }) {
+export function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <motion.div variants={fadeUp} className="section-card p-5">
-      <div className="text-xs uppercase tracking-widest text-muted-foreground">{label}</div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight">{value}</div>
-    </motion.div>
+    <div className="min-w-0 space-y-1 rounded-lg border border-border p-3 [overflow-wrap:anywhere]">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="whitespace-pre-wrap text-sm font-semibold">{children}</dd>
+    </div>
   );
 }

@@ -1,117 +1,84 @@
-/**
- * Health module — façade over USE Brain.
- * Derives 5 health categories from the Brain snapshot scores + signals.
- */
+/** Saved health reads and an explicit, versioned local heuristic calculation. */
+import { randomUUID } from "node:crypto";
 import { createServerFn } from "@tanstack/react-start";
-import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { buildSnapshot } from "@/lib/brain/brain";
+import { WORKSPACE_EDIT_ROLES } from "@/lib/workspace/permissions";
+import { buildDiagnostics } from "@/lib/diagnostics/build.server";
+import { DIAGNOSTIC_FALLBACK_MESSAGES } from "@/lib/diagnostics/model";
+import {
+  DIAGNOSTIC_READ_ROLES,
+  HEALTH_CATEGORIES,
+  confirmHealth,
+  confirmSavedHealth,
+  diagnosticComputeSchema,
+  diagnosticScopeSchema,
+  type HealthRecord,
+} from "@/lib/diagnostics/contracts";
 import { throwIfError } from "./_supabase";
 import { requireWorkspaceRole } from "./_workspace";
 
-const wsInput = z.object({ workspaceId: z.string().uuid() });
-type Category = "marketing" | "content" | "brand" | "channel" | "growth";
-
 export const computeHealth = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i) => wsInput.parse(i))
+  .inputValidator((input) => diagnosticComputeSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const snap = await buildSnapshot(supabase, data.workspaceId, userId);
-    const s = snap.scores;
-    const negatives = snap.signals.filter((x) => x.kind === "negative");
-    const positives = snap.signals.filter((x) => x.kind === "positive");
-
-    const byEngine = (engine: string, kind: "neg" | "pos") =>
-      (kind === "neg" ? negatives : positives)
-        .filter((sig) => sig.engine === engine)
-        .map((sig) => sig.message);
-
-    const cards: Array<{
-      category: Category;
-      score: number;
-      strengths: string[];
-      weaknesses: string[];
-    }> = [
-      {
-        category: "marketing",
-        score: Math.round((s.presence + s.channel_setup) / 2),
-        strengths: byEngine("business", "pos"),
-        weaknesses: byEngine("business", "neg"),
+    await requireWorkspaceRole(supabase, data.workspaceId, userId, WORKSPACE_EDIT_ROLES);
+    const calculation = await buildDiagnostics(supabase, data);
+    const expected: HealthRecord[] = calculation.cards.map((card) => ({
+      id: randomUUID(),
+      workspace_id: data.workspaceId,
+      category: card.category,
+      score: card.score,
+      computed_at: calculation.diagnostic.finishedAt,
+      strengths: card.strengthCodes.map((code) => DIAGNOSTIC_FALLBACK_MESSAGES[code]),
+      weaknesses: card.weaknessCodes.map((code) => DIAGNOSTIC_FALLBACK_MESSAGES[code]),
+      details: {
+        diagnostic: calculation.diagnostic,
+        strengthCodes: card.strengthCodes,
+        weaknessCodes: card.weaknessCodes,
       },
-      {
-        category: "content",
-        score: Math.round((s.content + s.consistency) / 2),
-        strengths: byEngine("growth", "pos"),
-        weaknesses: byEngine("growth", "neg"),
-      },
-      {
-        category: "brand",
-        score: s.branding,
-        strengths: s.branding >= 70 ? ["Identidade visual sólida"] : [],
-        weaknesses: s.branding < 40 ? ["Marca incompleta (voz, paleta ou logo)"] : [],
-      },
-      {
-        category: "channel",
-        score: s.channel_setup,
-        strengths: s.channel_setup === 100 ? ["Todos os canais conectados"] : [],
-        weaknesses: s.channel_setup < 60 ? ["Há canais desconectados"] : [],
-      },
-      {
-        category: "growth",
-        score: s.growth,
-        strengths: s.growth >= 70 ? ["Publicações automatizadas funcionando"] : [],
-        weaknesses: s.growth < 30 ? ["Baixa taxa de sucesso nas publicações"] : [],
-      },
-    ];
-
-    const { data: rows, error } = await supabase
-      .from("health_metrics")
-      .insert(
-        cards.map((c) => ({
-          workspace_id: data.workspaceId,
-          category: c.category,
-          score: c.score,
-          strengths: c.strengths,
-          weaknesses: c.weaknesses,
-        })),
-      )
-      .select();
-    throwIfError(error);
-    return rows ?? [];
+    }));
+    const result = await supabase.from("health_metrics").insert(expected).select("*");
+    throwIfError(result.error);
+    return { metrics: confirmSavedHealth(result.data, expected) };
   });
 
+/** Latest per category; a partial or mixed-age history is not called a single complete run. */
 export const getLatestHealth = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i) => wsInput.parse(i))
+  .inputValidator((input) => diagnosticScopeSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    await requireWorkspaceRole(supabase, data.workspaceId, userId);
-    const cats: Category[] = ["marketing", "content", "brand", "channel", "growth"];
-    const results = await Promise.all(
-      cats.map(async (cat) => {
-        const { data: r, error } = await supabase
+    await requireWorkspaceRole(supabase, data.workspaceId, userId, DIAGNOSTIC_READ_ROLES);
+    const rows = await Promise.all(
+      HEALTH_CATEGORIES.map(async (category) => {
+        const result = await supabase
           .from("health_metrics")
           .select("*")
           .eq("workspace_id", data.workspaceId)
-          .eq("category", cat)
+          .eq("category", category)
           .order("computed_at", { ascending: false })
           .order("id", { ascending: false })
           .limit(1)
           .maybeSingle();
-        throwIfError(error);
+        throwIfError(result.error);
+        if (result.data === null) return null;
+        // Preserve the previous range error, now with complete row/scope validation too.
         if (
-          r === undefined ||
-          (r !== null && (!Number.isFinite(r.score) || r.score < 0 || r.score > 100))
-        ) {
-          throw new Error("Dashboard health score was not returned in its supported range.");
-        }
-        return r;
+          !result.data ||
+          !Number.isInteger(result.data.score) ||
+          result.data.score < 0 ||
+          result.data.score > 100
+        )
+          throw new Error("Health score was not returned in its supported range.");
+        const [row] = confirmHealth([result.data], data.workspaceId);
+        if (row.category !== category)
+          throw new Error("The requested health category was not confirmed.");
+        return row;
       }),
     );
-    // `filter(Boolean)` returns the same `(T | null)[]` type to TypeScript — it
-    // does not narrow — so consumers kept receiving `null` entries and the
-    // compiler could not warn them. The explicit predicate both narrows the type
-    // and states the intent.
-    return results.filter((r): r is NonNullable<typeof r> => r !== null);
+    return confirmHealth(
+      rows.filter((row): row is HealthRecord => row !== null),
+      data.workspaceId,
+    );
   });

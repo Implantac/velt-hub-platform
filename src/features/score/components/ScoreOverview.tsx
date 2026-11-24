@@ -1,36 +1,55 @@
-import { motion } from "framer-motion";
-import { fadeUp } from "@/components/app/motion-presets";
+import { useTranslation } from "react-i18next";
 import { ScoreGauge } from "@/components/app/ScoreGauge";
-import type { Row } from "@/lib/brain/types";
+import { scoreMethod, type ScoreRecord } from "@/lib/diagnostics/contracts";
 import { PILLARS } from "../constants";
 
-export function ScoreOverview({ score }: { score: Row<"digital_scores"> | null | undefined }) {
+/** A confirmed record is required. Loading, absence and malformed pillars are not zeros. */
+export function ScoreOverview({ score }: { score: ScoreRecord }) {
+  const { t, i18n } = useTranslation();
+  const number = new Intl.NumberFormat(i18n.language);
+  const meta = scoreMethod(score)?.diagnostic;
+  const noQueueEvidence = meta && meta.jobEvidence.successes + meta.jobEvidence.failures === 0;
   return (
-    <div className="grid gap-6 lg:grid-cols-[auto,1fr]">
-      <motion.div variants={fadeUp} className="section-card grid place-items-center p-8">
-        <ScoreGauge value={score?.overall ?? 0} size={240} />
-      </motion.div>
-      <motion.div variants={fadeUp} className="grid gap-3 sm:grid-cols-2">
-        {PILLARS.map((p) => {
-          const v = (score?.[p.key] as number) ?? 0;
+    <section
+      aria-label={t("diagnostics.score.pillarsTitle")}
+      className="grid min-w-0 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]"
+    >
+      <div className="section-card grid min-w-0 place-items-center p-4">
+        <ScoreGauge value={score.overall} size={200} label={t("diagnostics.score.eyebrow")} />
+      </div>
+      <ul className="grid min-w-0 gap-3 sm:grid-cols-2">
+        {PILLARS.map((key) => {
+          const unavailable = key === "growth" && noQueueEvidence;
           return (
-            <div key={p.key} className="stat-tile">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{p.label}</span>
-                <span className="font-mono font-semibold tabular-nums">{v}</span>
+            <li key={key} className="stat-tile min-w-0">
+              <div className="flex items-start justify-between gap-3 text-sm">
+                <h2 className="min-w-0 font-medium">{t(`diagnostics.pillars.${key}`)}</h2>
+                <span className="shrink-0 font-mono font-semibold tabular-nums">
+                  {unavailable ? "—" : number.format(score[key])}
+                </span>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${v}%` }}
-                  transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              <div
+                aria-hidden="true"
+                className="mt-3 h-1.5 overflow-hidden rounded-full bg-secondary"
+              >
+                <div
                   className="h-full rounded-full bg-gradient-brand"
+                  style={{ width: `${score[key]}%` }}
                 />
               </div>
-            </div>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                {t(
+                  !meta
+                    ? "diagnostics.legacyShort"
+                    : unavailable
+                      ? "diagnostics.noQueueEvidence"
+                      : `diagnostics.pillarHints.${key}`,
+                )}
+              </p>
+            </li>
           );
         })}
-      </motion.div>
-    </div>
+      </ul>
+    </section>
   );
 }
